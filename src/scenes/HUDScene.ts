@@ -6,7 +6,6 @@ import { Visibility } from '../systems/FogOfWar';
 import { WorldScene } from './WorldScene';
 import { VirtualPad } from '../ui/VirtualPad';
 import { AudioManager } from '../systems/AudioManager';
-import classesData from '../data/classes.json';
 import skillsData from '../data/skills.json';
 import itemsData from '../data/items.json';
 import dialogData from '../data/dialogs/village.json';
@@ -16,7 +15,7 @@ type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory' | 'shop';
 const PAD = 8;
 const TOP_H = 26;      // top stats bar height
 const BTN_H = 28;      // bottom toolbar height
-const LOG_MAX = 5;      // max visible log messages
+const LOG_MAX = 3;      // max visible log messages
 const LOG_LINE_H = 18;  // log line height
 const ACTION_H = 180;   // expanded action area (combat/dialog)
 
@@ -50,6 +49,9 @@ export class HUDScene extends Phaser.Scene {
   private overlayBg?: Phaser.GameObjects.Rectangle;
   private minimapGfx?: Phaser.GameObjects.Graphics;
   private minimapVisible = true;
+  private shopTab: 'buy' | 'sell' = 'buy';
+  private scrollOffset = 0;
+  private combatSubmenu: null | 'skills' | 'items' = null;
 
   // Persistent log for review
   private messageLog: { text: string; color: string }[] = [];
@@ -154,12 +156,13 @@ export class HUDScene extends Phaser.Scene {
       weakness: e.weakness, resistance: e.resistance,
     }));
     this.mode = 'combat';
+    this.combatSubmenu = null;
     this.addMessage(`--- ${foes.map(f => f.name).join(', ')} appeared! ---`, '#ff8844');
     this.combat.startCombat([player], foes);
   }
 
-  showInventory(): void { this.mode = 'inventory'; this.renderInventory(); }
-  showShop(): void { this.endDialog(); this.mode = 'shop'; this.renderShop(); }
+  showInventory(): void { this.mode = 'inventory'; this.scrollOffset = 0; this.renderInventory(); }
+  showShop(): void { this.endDialog(); this.mode = 'shop'; this.scrollOffset = 0; this.shopTab = 'buy'; this.renderShop(); }
 
   // ══════════════════════════════════════
   //  STATS BAR (top overlay)
@@ -167,59 +170,38 @@ export class HUDScene extends Phaser.Scene {
 
   private renderStats(): void {
     this.clearGroup(this.statsObjs);
+    if (this.minimapGfx) { this.minimapGfx.destroy(); this.minimapGfx = undefined; }
     const run = this.worldScene?.run;
     const char = this.worldScene?.character;
     if (!run || !char) return;
 
-    // Semi-transparent background bar
     const bg = this.add.rectangle(GAME_WIDTH / 2, TOP_H / 2, GAME_WIDTH, TOP_H, COL.overlay, 0.7).setDepth(10);
     this.statsObjs.push(bg);
 
-    const cd = (classesData as any)[char.class];
     let x = PAD;
     const cy = TOP_H / 2;
 
-    // Name + Level
     const name = this.mkText(x, cy, `${char.name} Lv${char.level}`, COL.title, this.fs(9));
     this.statsObjs.push(name); x += name.width + 8;
 
-    // HP bar
-    x = this.drawBar(x, cy, 'HP', run.hp, run.maxHp, COL.hp, 80);
-    x += 8;
-    // MP bar
-    x = this.drawBar(x, cy, 'MP', run.mp, run.maxMp, COL.mp, 60);
-    x += 8;
+    x = this.drawBar(x, cy, 'HP', run.hp, run.maxHp, COL.hp, 70);
+    x += 6;
+    x = this.drawBar(x, cy, 'MP', run.mp, run.maxMp, COL.mp, 50);
 
-    // Stats (with equipment bonuses reflected)
-    const eqMods = this.worldScene.inventory.getEquipmentStatModifiers();
-    const totalAtk = run.stats.attack + (eqMods.attack ?? 0);
-    const totalDef = run.stats.defense + (eqMods.defense ?? 0);
-    const totalSpd = run.stats.speed + (eqMods.speed ?? 0);
-    const totalMag = run.stats.magic + (eqMods.magic ?? 0);
-    const stats = this.mkText(x, cy,
-      `ATK${totalAtk} DEF${totalDef} SPD${totalSpd} MAG${totalMag}`,
-      COL.dim, this.fs(8));
-    this.statsObjs.push(stats);
-
-    // Gold (right-aligned)
+    // Right side: Floor, XP, Gold (right-aligned)
+    let rx = GAME_WIDTH - PAD;
     const goldTxt = this.mkText(0, cy, `${run.gold ?? 0}g`, COL.gold, this.fs(9));
-    goldTxt.setX(GAME_WIDTH - PAD - goldTxt.width);
-    this.statsObjs.push(goldTxt);
+    rx -= goldTxt.width; goldTxt.setX(rx); this.statsObjs.push(goldTxt); rx -= 6;
 
-    // XP progress (right of gold)
     const nextLvlXp = WorldScene.xpForLevel(char.level + 1);
     const xpTxt = this.mkText(0, cy, `XP:${char.xp}/${nextLvlXp}`, COL.dim, this.fs(8));
-    xpTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - xpTxt.width);
-    this.statsObjs.push(xpTxt);
+    rx -= xpTxt.width; xpTxt.setX(rx); this.statsObjs.push(xpTxt); rx -= 6;
 
-    // Floor indicator
     if (run.dungeonFloor > 0) {
       const floorTxt = this.mkText(0, cy, `F${run.dungeonFloor}`, COL.dim, this.fs(8));
-      floorTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - xpTxt.width - 8 - floorTxt.width);
-      this.statsObjs.push(floorTxt);
+      rx -= floorTxt.width; floorTxt.setX(rx); this.statsObjs.push(floorTxt);
     }
 
-    // Minimap
     if (this.minimapVisible && this.mode === 'idle') this.renderMinimap();
   }
 
@@ -421,6 +403,7 @@ export class HUDScene extends Phaser.Scene {
     this.dialogTextObj = this.add.text(PAD, y, '', {
       fontSize: `${this.fs(10)}px`, color: '#dddddd', fontFamily: 'monospace',
       wordWrap: { width: GAME_WIDTH - PAD * 2, useAdvancedWrap: true },
+      maxLines: 4,
     }).setDepth(16);
     this.actionObjs.push(this.dialogTextObj);
 
@@ -449,29 +432,29 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private renderDialogChoices(): void {
-    // Remove the skip zone
     for (const z of this.clickZones) z.destroy();
     this.clickZones.length = 0;
     const node = this.dialog.currentNode;
     if (!node) return;
     const textH = this.dialogTextObj ? this.dialogTextObj.height : 14;
     const areaTop = GAME_HEIGHT - ACTION_H;
-    let y = areaTop + PAD + 16 + textH + 6; // speaker + text + gap
+    const choiceRowH = Math.max(this.fs(10) + 6, 24);
+    const rawY = areaTop + PAD + 16 + textH + 6;
 
     if (node.choices?.length) {
+      const maxY = GAME_HEIGHT - node.choices.length * choiceRowH - PAD;
+      let y = Math.min(rawY, maxY);
       for (let i = 0; i < node.choices.length; i++) {
         const t = this.mkText(PAD + 4, y, `> ${node.choices[i].text}`, COL.title, this.fs(10));
         this.actionObjs.push(t);
         const idx = i;
-        const choiceH = Math.max(t.height + 6, 28);
-        this.addZone(y - 2, choiceH, () => this.dialogChoose(idx));
-        y += choiceH;
+        this.addZone(y - 2, choiceRowH, () => this.dialogChoose(idx));
+        y += choiceRowH;
       }
     } else {
+      const y = Math.min(rawY, GAME_HEIGHT - choiceRowH - PAD);
       const t = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
       this.actionObjs.push(t);
-      // Make the entire remaining action area tappable
-      const areaTop = GAME_HEIGHT - ACTION_H;
       this.addZone(areaTop, ACTION_H, () => this.dialogAdvance());
     }
   }
@@ -541,64 +524,94 @@ export class HUDScene extends Phaser.Scene {
     this.actionObjs.push(bg);
 
     let y = areaTop + PAD;
+    y = this.renderEnemyStatus(y);
+    y += 4;
 
-    // Enemy display with sprites
-    const enemyRowX = PAD;
+    if (this.combatSubmenu === null) {
+      const p = this.combat.party[0];
+      const hasSkills = p && p.skills.length > 0;
+      const hasItems = this.worldScene.inventory.items.some(s => (itemsData as any)[s.itemId]?.type === 'consumable');
+      const actions: { label: string; cb: () => void; dim?: boolean }[] = [
+        { label: 'Attack', cb: () => this.submitCombatAction({ type: 'attack', targetIndex: 0 }) },
+      ];
+      if (hasSkills) actions.push({ label: 'Skills \u25B6', cb: () => { this.combatSubmenu = 'skills'; this.renderCombatActions(); } });
+      if (hasItems) actions.push({ label: 'Items \u25B6', cb: () => { this.combatSubmenu = 'items'; this.renderCombatActions(); } });
+      actions.push({ label: 'Defend', cb: () => this.submitCombatAction({ type: 'defend' }) });
+      if (!this.isBoss) actions.push({ label: 'Flee', cb: () => this.submitCombatAction({ type: 'flee' }) });
+      this.renderCombatButtonGrid(y, actions);
+    } else if (this.combatSubmenu === 'skills') {
+      const p = this.combat.party[0];
+      const actions: { label: string; cb: () => void; dim?: boolean }[] = [];
+      if (p) {
+        for (const sid of p.skills) {
+          const sk = (skillsData as any)[sid];
+          if (sk) {
+            const canUse = p.mp >= sk.mpCost;
+            actions.push({
+              label: `${sk.name} ${sk.mpCost}MP`,
+              cb: canUse ? () => this.submitCombatAction({ type: 'skill', skillId: sid, targetIndex: 0 }) : () => {},
+              dim: !canUse,
+            });
+          }
+        }
+      }
+      actions.push({ label: '\u25C0 Back', cb: () => { this.combatSubmenu = null; this.renderCombatActions(); } });
+      this.renderCombatButtonGrid(y, actions);
+    } else {
+      const actions: { label: string; cb: () => void; dim?: boolean }[] = [];
+      for (const slot of this.worldScene.inventory.items) {
+        const item = (itemsData as any)[slot.itemId];
+        if (item?.type === 'consumable') {
+          const id = slot.itemId;
+          actions.push({ label: `${item.name} x${slot.quantity}`, cb: () => this.submitCombatAction({ type: 'item', itemId: id }) });
+        }
+      }
+      actions.push({ label: '\u25C0 Back', cb: () => { this.combatSubmenu = null; this.renderCombatActions(); } });
+      this.renderCombatButtonGrid(y, actions);
+    }
+  }
+
+  private renderEnemyStatus(y: number): number {
+    const fontSize = this.fs(8);
     for (const e of this.combat.enemies) {
       const col = e.hp > 0 ? COL.hp : COL.dim;
-      // Render sprite icon
       if (e.spriteKey && this.textures.exists(e.spriteKey)) {
-        const icon = this.add.image(enemyRowX + 8, y + 6, e.spriteKey).setDepth(16).setScale(1.5);
+        const icon = this.add.image(PAD + 8, y + 5, e.spriteKey).setDepth(16).setScale(1);
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
       const statusStr = (e.statusEffects ?? []).map((s: any) => s.id[0].toUpperCase()).join('');
       const statusSuffix = statusStr ? ` [${statusStr}]` : '';
-      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, this.fs(9));
-      this.actionObjs.push(t); y += this.fs(9) + 8;
+      const t = this.mkText(PAD + 18, y + 5, `${e.name} ${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, fontSize);
+      this.actionObjs.push(t);
+      y += fontSize + 6;
     }
-    y += 4;
+    return y;
+  }
 
-    // Action buttons in a grid layout
-    const actions: { label: string; action: CombatAction }[] = [
-      { label: 'Attack', action: { type: 'attack', targetIndex: 0 } },
-    ];
-    const p = this.combat.party[0];
-    if (p) {
-      for (const sid of p.skills) {
-        const sk = (skillsData as any)[sid];
-        if (sk) actions.push({ label: `${sk.name} (${sk.mpCost}MP)`, action: { type: 'skill', skillId: sid, targetIndex: 0 } });
-      }
-    }
-    for (const slot of this.worldScene.inventory.items) {
-      const item = (itemsData as any)[slot.itemId];
-      if (item?.type === 'consumable') actions.push({ label: `${item.name} x${slot.quantity}`, action: { type: 'item', itemId: slot.itemId } });
-    }
-    actions.push({ label: 'Defend', action: { type: 'defend' } });
-    if (!this.isBoss) actions.push({ label: 'Flee', action: { type: 'flee' } });
-
-    // Render as two-column layout
+  private renderCombatButtonGrid(y: number, actions: { label: string; cb: () => void; dim?: boolean }[]): void {
     const colW = (GAME_WIDTH - PAD * 2) / 2;
+    const btnFontSize = this.fs(9);
+    const btnRowH = Math.max(btnFontSize + 8, 22);
     let col = 0;
-    const btnFontSize = this.fs(10);
-    const btnRowH = Math.max(btnFontSize + 8, 26);
     for (const a of actions) {
       const ax = PAD + (col * colW) + 4;
-      const t = this.mkText(ax, y, `> ${a.label}`, COL.title, btnFontSize);
+      const t = this.mkText(ax, y + btnRowH / 2, `> ${a.label}`, a.dim ? COL.dim : COL.title, btnFontSize);
       this.actionObjs.push(t);
-      const act = a.action;
-      // Use column-scoped zones so two-column buttons don't overlap
-      const zx = PAD + col * colW + colW / 2;
-      const z = this.add.zone(zx, y + t.height / 2 - 1, colW, btnRowH)
-        .setDepth(35).setInteractive({ useHandCursor: true });
-      z.on('pointerdown', () => this.submitCombatAction(act));
-      this.clickZones.push(z);
+      if (!a.dim) {
+        const zx = PAD + col * colW + colW / 2;
+        const z = this.add.zone(zx, y + btnRowH / 2, colW, btnRowH)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', a.cb);
+        this.clickZones.push(z);
+      }
       col++;
       if (col >= 2) { col = 0; y += btnRowH; }
     }
   }
 
   private submitCombatAction(action: CombatAction): void {
+    this.combatSubmenu = null;
     if (action.type === 'item' && action.itemId) this.worldScene.inventory.removeItem(action.itemId);
     this.combat.submitAction(action);
   }
@@ -663,22 +676,10 @@ export class HUDScene extends Phaser.Scene {
     this.actionObjs.push(bg);
 
     let y = areaTop + PAD;
-    for (const e of this.combat.enemies) {
-      const col = e.hp > 0 ? COL.hp : COL.dim;
-      if (e.spriteKey && this.textures.exists(e.spriteKey)) {
-        const icon = this.add.image(PAD + 8, y + 6, e.spriteKey).setDepth(16).setScale(1.5);
-        if (e.hp <= 0) icon.setAlpha(0.4);
-        this.actionObjs.push(icon);
-      }
-      const statusStr = (e.statusEffects ?? []).map((s: any) => s.id[0].toUpperCase()).join('');
-      const statusSuffix = statusStr ? ` [${statusStr}]` : '';
-      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, this.fs(9));
-      this.actionObjs.push(t); y += this.fs(9) + 8;
-    }
-    y += 6;
+    y = this.renderEnemyStatus(y);
+    y += 4;
     const tc = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
     this.actionObjs.push(tc);
-    // Make entire action area tappable
     this.addZone(areaTop, ACTION_H, () => this.combat.advanceFromAnimate());
   }
 
@@ -727,74 +728,117 @@ export class HUDScene extends Phaser.Scene {
   private renderInventory(): void {
     this.clearActions();
     const inv = this.worldScene.inventory;
+    const run = this.worldScene.run;
 
-    // Full screen dim overlay
     this.overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COL.overlay, 0.7).setDepth(30);
     this.actionObjs.push(this.overlayBg);
 
-    // Inventory panel
-    const panelW = 360, panelH = 380;
+    const panelW = 360, panelH = 370;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31);
-    this.actionObjs.push(panel);
-    const border = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH)
-      .setStrokeStyle(1, 0x444466).setDepth(31);
-    this.actionObjs.push(border);
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
 
+    const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
+    const szBody = this.fs(9);
+    const rowH = Math.max(szBody + 6, 18);
     let y = py + PAD;
-    const push = (t: Phaser.GameObjects.GameObject) => { this.actionObjs.push(t); };
 
-    const szTitle = this.fs(12);
-    const szBody = this.fs(10);
-    const szClose = this.fs(11);
-    const rowH = Math.max(szBody + 8, 22);
+    // Title + gold
+    push(this.invText(px + PAD, y, 'INVENTORY', COL.title, this.fs(11)));
+    const gt = this.invText(px + panelW - PAD, y, `${inv.gold}g`, COL.gold, this.fs(11));
+    gt.setOrigin(1, 0); push(gt);
+    y += this.fs(11) + 6;
 
-    const t0 = this.invText(px + PAD, y, '--- INVENTORY ---', COL.title, szTitle);
-    push(t0); y += t0.height + 6;
+    // Stats summary
+    const eqMods = inv.getEquipmentStatModifiers();
+    push(this.invText(px + PAD, y,
+      `ATK:${run.stats.attack + (eqMods.attack ?? 0)}  DEF:${run.stats.defense + (eqMods.defense ?? 0)}  SPD:${run.stats.speed + (eqMods.speed ?? 0)}  MAG:${run.stats.magic + (eqMods.magic ?? 0)}`,
+      COL.dim, szBody));
+    y += szBody + 4;
 
-    const te = this.invText(px + PAD, y, 'Equipment:', COL.dim, szBody);
-    push(te); y += te.height + 2;
+    // Equipment slots
     for (const slot of ['weapon', 'armor', 'accessory'] as const) {
       const id = inv.equipment[slot];
-      const name = id ? ((itemsData as any)[id]?.name ?? id) : '(empty)';
-      const t = this.invText(px + PAD + 4, y, `${slot}: ${name}`, id ? COL.text : COL.dim, szBody);
-      push(t);
+      const name = id ? ((itemsData as any)[id]?.name ?? id) : '\u2014';
+      push(this.invText(px + PAD + 2, y, `${slot[0].toUpperCase() + slot.slice(1)}: ${name}`, id ? COL.text : COL.dim, szBody));
       if (id) {
         const s = slot;
-        this.addZone(y, rowH, () => { inv.unequip(s); this.renderInventory(); });
+        const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => { inv.unequip(s); this.renderInventory(); });
+        this.clickZones.push(z);
       }
       y += rowH;
     }
-    y += 6;
-    const tg = this.invText(px + PAD, y, `Gold: ${inv.gold}`, COL.gold, szBody);
-    push(tg); y += tg.height + 6;
-    const ti = this.invText(px + PAD, y, 'Items:', COL.dim, szBody);
-    push(ti); y += ti.height + 2;
+    y += 2;
 
-    if (inv.items.length === 0) {
-      const t = this.invText(px + PAD + 4, y, '(empty)', COL.dim, szBody);
-      push(t); y += t.height + 2;
+    const dg = this.add.graphics().setDepth(32);
+    dg.lineStyle(1, 0x444466, 0.5);
+    dg.lineBetween(px + PAD, y, px + panelW - PAD, y);
+    push(dg); y += 4;
+
+    push(this.invText(px + PAD, y, 'Items:', COL.dim, szBody));
+    y += szBody + 2;
+
+    // Scrollable items list
+    const closeH = 26;
+    const listBottom = py + panelH - PAD - closeH;
+    const maxRows = Math.floor((listBottom - y) / rowH);
+    const total = inv.items.length;
+
+    if (total === 0) {
+      push(this.invText(px + PAD + 4, y, '(empty)', COL.dim, szBody));
     } else {
-      for (const slot of inv.items) {
-        const item = (itemsData as any)[slot.itemId];
-        const name = item?.name ?? slot.itemId;
-        const t = this.invText(px + PAD + 4, y, `${name} x${slot.quantity}`, COL.text, szBody);
-        push(t);
+      const needsScroll = total > maxRows;
+      const displayRows = needsScroll ? maxRows - 1 : maxRows;
+      const off = needsScroll ? Math.min(this.scrollOffset, Math.max(0, total - displayRows)) : 0;
+      const visible = inv.items.slice(off, off + displayRows);
+      for (const s of visible) {
+        const item = (itemsData as any)[s.itemId];
+        const nm = item?.name ?? s.itemId;
+        push(this.invText(px + PAD + 4, y, `${nm} x${s.quantity}`, COL.text, szBody));
         if (item?.type === 'equipment') {
-          const id = slot.itemId;
-          this.addZone(y, rowH, () => { inv.equip(id); this.renderInventory(); });
+          const id = s.itemId;
+          const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          z.on('pointerdown', () => { inv.equip(id); this.scrollOffset = 0; this.renderInventory(); });
+          this.clickZones.push(z);
         } else if (item?.type === 'consumable') {
-          const id = slot.itemId;
-          this.addZone(y, rowH, () => this.useConsumable(id));
+          const id = s.itemId;
+          const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          z.on('pointerdown', () => this.useConsumable(id));
+          this.clickZones.push(z);
         }
         y += rowH;
       }
+      if (needsScroll) {
+        const st = this.invText(px + panelW / 2, y, `\u25B2 ${off + 1}\u2013${off + visible.length} of ${total} \u25BC`, COL.dim, szBody);
+        st.setOrigin(0.5, 0); push(st);
+        if (off > 0) {
+          const uz = this.add.zone(px + panelW / 4, y + rowH / 2, panelW / 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          uz.on('pointerdown', () => { this.scrollOffset = Math.max(0, off - displayRows); this.renderInventory(); });
+          this.clickZones.push(uz);
+        }
+        if (off + displayRows < total) {
+          const dz = this.add.zone(px + 3 * panelW / 4, y + rowH / 2, panelW / 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          dz.on('pointerdown', () => { this.scrollOffset = off + displayRows; this.renderInventory(); });
+          this.clickZones.push(dz);
+        }
+      }
     }
-    y += 8;
-    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, szClose);
+
+    // Close button at fixed bottom
+    const closeY = py + panelH - PAD - 12;
+    const tc = this.invText(px + panelW / 2, closeY, '[ Close ]', COL.title, this.fs(10));
     tc.setOrigin(0.5, 0); push(tc);
-    this.addZone(y, Math.max(tc.height + 8, 32), () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+    const cz = this.add.zone(px + panelW / 2, closeY + 10, panelW - PAD * 2, 24)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    cz.on('pointerdown', () => { this.mode = 'idle'; this.scrollOffset = 0; this.clearActions(); this.renderBottomBar(); });
+    this.clickZones.push(cz);
   }
 
   private useConsumable(itemId: string): void {
@@ -832,86 +876,141 @@ export class HUDScene extends Phaser.Scene {
     this.clearActions();
     const inv = this.worldScene.inventory;
 
-    // Full screen dim overlay
     this.overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COL.overlay, 0.7).setDepth(30);
     this.actionObjs.push(this.overlayBg);
 
-    // Shop panel
-    const panelW = 380, panelH = 400;
+    const panelW = 380, panelH = 380;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
-    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31);
-    this.actionObjs.push(panel);
-    const border = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH)
-      .setStrokeStyle(1, 0x444466).setDepth(31);
-    this.actionObjs.push(border);
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
 
+    const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
+    const szBody = this.fs(9);
+    const rowH = Math.max(szBody + 6, 18);
     let y = py + PAD;
-    const push = (t: Phaser.GameObjects.GameObject) => { this.actionObjs.push(t); };
 
-    const szTitle = this.fs(12);
-    const szBody = this.fs(10);
-    const szClose = this.fs(11);
-    const shopRowH = Math.max(szBody + 8, 22);
+    // Title + gold
+    push(this.invText(px + PAD, y, 'SHOP', COL.title, this.fs(11)));
+    const gt = this.invText(px + panelW - PAD, y, `${inv.gold}g`, COL.gold, this.fs(11));
+    gt.setOrigin(1, 0); push(gt);
+    y += this.fs(11) + 6;
 
-    const t0 = this.invText(px + PAD, y, "--- BRYNN'S SHOP ---", COL.title, szTitle);
-    push(t0); y += t0.height + 4;
+    // Tab buttons
+    const buyActive = this.shopTab === 'buy';
+    const buyT = this.invText(px + PAD, y, buyActive ? '[ Buy ]' : '  Buy  ', buyActive ? COL.title : COL.dim, szBody);
+    push(buyT);
+    const buyZ = this.add.zone(px + PAD + buyT.width / 2, y + buyT.height / 2, buyT.width + 12, rowH)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    buyZ.on('pointerdown', () => { if (this.shopTab !== 'buy') { this.shopTab = 'buy'; this.scrollOffset = 0; this.renderShop(); } });
+    this.clickZones.push(buyZ);
 
-    const tg = this.invText(px + PAD, y, `Your Gold: ${inv.gold}`, COL.gold, szBody);
-    push(tg); y += tg.height + 6;
+    const sellT = this.invText(px + PAD + buyT.width + 16, y, !buyActive ? '[ Sell ]' : '  Sell  ', !buyActive ? COL.title : COL.dim, szBody);
+    push(sellT);
+    const sellZ = this.add.zone(px + PAD + buyT.width + 16 + sellT.width / 2, y + sellT.height / 2, sellT.width + 12, rowH)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    sellZ.on('pointerdown', () => { if (this.shopTab !== 'sell') { this.shopTab = 'sell'; this.scrollOffset = 0; this.renderShop(); } });
+    this.clickZones.push(sellZ);
+    y += rowH + 4;
 
-    // Buy section
-    const tb = this.invText(px + PAD, y, 'Buy:', COL.dim, szBody);
-    push(tb); y += tb.height + 2;
+    // Item list area
+    const closeH = 26;
+    const listBottom = py + panelH - PAD - closeH;
+    const maxRows = Math.floor((listBottom - y) / rowH);
 
-    for (const itemId of HUDScene.SHOP_STOCK) {
-      const item = (itemsData as any)[itemId];
-      if (!item) continue;
-      const price = item.value ?? 0;
-      const canAfford = inv.gold >= price;
-      const label = `${item.name} - ${price}g`;
-      const t = this.invText(px + PAD + 4, y, label, canAfford ? COL.text : COL.dim, szBody);
-      push(t);
-
-      if (canAfford && price > 0) {
-        const id = itemId;
-        const zone = this.add.zone(px + panelW / 2, y + shopRowH / 2, panelW - PAD * 2, shopRowH)
-          .setDepth(35).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', () => this.buyItem(id, price));
-        this.clickZones.push(zone);
+    if (this.shopTab === 'buy') {
+      const buyItems: { id: string; item: any }[] = [];
+      for (const itemId of HUDScene.SHOP_STOCK) {
+        const item = (itemsData as any)[itemId];
+        if (item) buyItems.push({ id: itemId, item });
       }
-      y += shopRowH;
-    }
-    y += 6;
+      const total = buyItems.length;
+      const needsScroll = total > maxRows;
+      const displayRows = needsScroll ? maxRows - 1 : maxRows;
+      const off = needsScroll ? Math.min(this.scrollOffset, Math.max(0, total - displayRows)) : 0;
+      const visible = buyItems.slice(off, off + displayRows);
 
-    // Sell section
-    const ts = this.invText(px + PAD, y, 'Sell:', COL.dim, szBody);
-    push(ts); y += ts.height + 2;
-
-    if (inv.items.length === 0) {
-      const t = this.invText(px + PAD + 4, y, '(nothing to sell)', COL.dim, szBody);
-      push(t); y += t.height + 2;
+      for (const { id, item } of visible) {
+        const price = item.value ?? 0;
+        const canAfford = inv.gold >= price;
+        push(this.invText(px + PAD + 4, y, `${item.name} - ${price}g`, canAfford ? COL.text : COL.dim, szBody));
+        if (canAfford && price > 0) {
+          const zone = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          zone.on('pointerdown', () => this.buyItem(id, price));
+          this.clickZones.push(zone);
+        }
+        y += rowH;
+      }
+      if (needsScroll) {
+        const st = this.invText(px + panelW / 2, y, `\u25B2 ${off + 1}\u2013${off + visible.length} of ${total} \u25BC`, COL.dim, szBody);
+        st.setOrigin(0.5, 0); push(st);
+        if (off > 0) {
+          const uz = this.add.zone(px + panelW / 4, y + rowH / 2, panelW / 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          uz.on('pointerdown', () => { this.scrollOffset = Math.max(0, off - displayRows); this.renderShop(); });
+          this.clickZones.push(uz);
+        }
+        if (off + displayRows < total) {
+          const dz = this.add.zone(px + 3 * panelW / 4, y + rowH / 2, panelW / 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          dz.on('pointerdown', () => { this.scrollOffset = off + displayRows; this.renderShop(); });
+          this.clickZones.push(dz);
+        }
+      }
     } else {
-      for (const slot of inv.items) {
-        const item = (itemsData as any)[slot.itemId];
-        if (!item || item.type === 'key_item') continue;
-        const sellPrice = Math.max(1, Math.floor((item.value ?? 0) / 2));
-        const label = `${item.name} x${slot.quantity} → ${sellPrice}g`;
-        const t = this.invText(px + PAD + 4, y, label, COL.text, szBody);
-        push(t);
-        const id = slot.itemId;
-        const zone = this.add.zone(px + panelW / 2, y + shopRowH / 2, panelW - PAD * 2, shopRowH)
-          .setDepth(35).setInteractive({ useHandCursor: true });
-        zone.on('pointerdown', () => this.sellItem(id, sellPrice));
-        this.clickZones.push(zone);
-        y += shopRowH;
+      // Sell tab
+      const sellItems = inv.items.filter(s => {
+        const item = (itemsData as any)[s.itemId];
+        return item && item.type !== 'key_item';
+      });
+      const total = sellItems.length;
+      if (total === 0) {
+        push(this.invText(px + PAD + 4, y, '(nothing to sell)', COL.dim, szBody));
+      } else {
+        const needsScroll = total > maxRows;
+        const displayRows = needsScroll ? maxRows - 1 : maxRows;
+        const off = needsScroll ? Math.min(this.scrollOffset, Math.max(0, total - displayRows)) : 0;
+        const visible = sellItems.slice(off, off + displayRows);
+
+        for (const slot of visible) {
+          const item = (itemsData as any)[slot.itemId];
+          const sellPrice = Math.max(1, Math.floor((item.value ?? 0) / 2));
+          push(this.invText(px + PAD + 4, y, `${item.name} x${slot.quantity} \u2192 ${sellPrice}g`, COL.text, szBody));
+          const id = slot.itemId;
+          const zone = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+            .setDepth(35).setInteractive({ useHandCursor: true });
+          zone.on('pointerdown', () => this.sellItem(id, sellPrice));
+          this.clickZones.push(zone);
+          y += rowH;
+        }
+        if (needsScroll) {
+          const st = this.invText(px + panelW / 2, y, `\u25B2 ${off + 1}\u2013${off + visible.length} of ${total} \u25BC`, COL.dim, szBody);
+          st.setOrigin(0.5, 0); push(st);
+          if (off > 0) {
+            const uz = this.add.zone(px + panelW / 4, y + rowH / 2, panelW / 2, rowH)
+              .setDepth(35).setInteractive({ useHandCursor: true });
+            uz.on('pointerdown', () => { this.scrollOffset = Math.max(0, off - displayRows); this.renderShop(); });
+            this.clickZones.push(uz);
+          }
+          if (off + displayRows < total) {
+            const dz = this.add.zone(px + 3 * panelW / 4, y + rowH / 2, panelW / 2, rowH)
+              .setDepth(35).setInteractive({ useHandCursor: true });
+            dz.on('pointerdown', () => { this.scrollOffset = off + displayRows; this.renderShop(); });
+            this.clickZones.push(dz);
+          }
+        }
       }
     }
-    y += 8;
 
-    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, szClose);
+    // Close button at fixed bottom
+    const closeY = py + panelH - PAD - 12;
+    const tc = this.invText(px + panelW / 2, closeY, '[ Close ]', COL.title, this.fs(10));
     tc.setOrigin(0.5, 0); push(tc);
-    this.addZone(y, Math.max(tc.height + 8, 32), () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+    const cz = this.add.zone(px + panelW / 2, closeY + 10, panelW - PAD * 2, 24)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    cz.on('pointerdown', () => { this.mode = 'idle'; this.scrollOffset = 0; this.clearActions(); this.renderBottomBar(); });
+    this.clickZones.push(cz);
   }
 
   private buyItem(itemId: string, price: number): void {
