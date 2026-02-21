@@ -38,10 +38,10 @@ function generateVillageMap(): number[][] {
     for (let x = 0; x < w; x++) {
       // Border trees
       if (y === 0 || y === h - 1 || x === 0) { m[y][x] = T.TREE; continue; }
-      if (x === w - 1) { m[y][x] = y === 25 ? T.PATH : T.TREE; continue; }
+      if (x === w - 1) { m[y][x] = (y >= 24 && y <= 26) ? T.PATH : T.TREE; continue; }
 
       // Main east-west road
-      if (y === 25 && x >= 1) { m[y][x] = T.PATH; continue; }
+      if ((y >= 24 && y <= 26) && x >= 1) { m[y][x] = T.PATH; continue; }
       // North-south cross road
       if (x === 35 && y >= 10 && y <= 40) { m[y][x] = T.PATH; continue; }
 
@@ -81,23 +81,29 @@ function generateVillageMap(): number[][] {
 
 function generateForestMap(): number[][] {
   const w = 80, h = 55, m: number[][] = [];
+  // Helper: is (x,y) on or adjacent to the main path?
+  function onPath(x: number, y: number): boolean {
+    // West segment: y 24-26, x 0-21
+    if (y >= 24 && y <= 26 && x <= 21) return true;
+    // Diagonal south-east: widen by ±1 around centreline
+    if (x >= 19 && x <= 41) {
+      const cy = 25 + Math.floor((x - 20) / 4);
+      if (y >= cy - 1 && y <= cy + 1) return true;
+    }
+    // Mid + east segment: y 29-31, x >= 37
+    if (y >= 29 && y <= 31 && x >= 37) return true;
+    return false;
+  }
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      // Border trees
+      // Border trees (leave exits open)
       if (y === 0 || y === h - 1) { m[y][x] = T.TREE; continue; }
-      if (x === 0) { m[y][x] = y === 25 ? T.PATH : T.TREE; continue; }
-      if (x === w - 1) { m[y][x] = y === 30 ? T.PATH : T.TREE; continue; }
+      if (x === 0) { m[y][x] = (y >= 24 && y <= 26) ? T.PATH : T.TREE; continue; }
+      if (x === w - 1) { m[y][x] = (y >= 29 && y <= 31) ? T.PATH : T.TREE; continue; }
 
-      // Main winding path through forest: west entrance → east exit
-      // West segment (horizontal)
-      if (y === 25 && x <= 20) { m[y][x] = T.PATH; continue; }
-      // Diagonal south-east
-      if (x >= 20 && x <= 40 && y === 25 + Math.floor((x - 20) / 4)) { m[y][x] = T.PATH; continue; }
-      // Mid segment (horizontal)
-      if (y === 30 && x >= 38 && x <= 60) { m[y][x] = T.PATH; continue; }
-      // East segment to exit
-      if (y === 30 && x >= 60) { m[y][x] = T.PATH; continue; }
+      // Main path (3 tiles wide)
+      if (onPath(x, y)) { m[y][x] = T.PATH; continue; }
 
       // A stream running north-south
       if (x >= 50 && x <= 51 && y >= 5 && y <= 20) { m[y][x] = T.WATER; continue; }
@@ -133,8 +139,19 @@ function generateBossRoom(): number[][] {
 }
 
 const STATIC_MAPS: Record<string, StaticMapDef> = {
-  village: { width: 70, height: 50, tiles: generateVillageMap(), exits: [{ x: 69, y: 25, target: 'forest', tx: 1, ty: 25 }] },
-  forest: { width: 80, height: 55, tiles: generateForestMap(), exits: [{ x: 0, y: 25, target: 'village', tx: 68, ty: 25 }, { x: 79, y: 30, target: 'cave_floor1', tx: -1, ty: -1 }] },
+  village: { width: 70, height: 50, tiles: generateVillageMap(), exits: [
+    { x: 69, y: 24, target: 'forest', tx: 1, ty: 24 },
+    { x: 69, y: 25, target: 'forest', tx: 1, ty: 25 },
+    { x: 69, y: 26, target: 'forest', tx: 1, ty: 26 },
+  ] },
+  forest: { width: 80, height: 55, tiles: generateForestMap(), exits: [
+    { x: 0, y: 24, target: 'village', tx: 68, ty: 24 },
+    { x: 0, y: 25, target: 'village', tx: 68, ty: 25 },
+    { x: 0, y: 26, target: 'village', tx: 68, ty: 26 },
+    { x: 79, y: 29, target: 'cave_floor1', tx: -1, ty: -1 },
+    { x: 79, y: 30, target: 'cave_floor1', tx: -1, ty: -1 },
+    { x: 79, y: 31, target: 'cave_floor1', tx: -1, ty: -1 },
+  ] },
   cave_boss: { width: 55, height: 40, tiles: generateBossRoom(), exits: [{ x: 27, y: 39, target: 'cave_floor3', tx: -1, ty: -1 }] },
 };
 
@@ -438,14 +455,6 @@ export class WorldScene extends Phaser.Scene {
 
   private doMove(dx: number, dy: number): void {
     if (!dx && !dy) return;
-    // Diagonal: block corner-cutting — both adjacent orthogonal tiles must be passable
-    if (dx !== 0 && dy !== 0) {
-      if (!this.isTileWalkable(this.player.gridX + dx, this.player.gridY) ||
-          !this.isTileWalkable(this.player.gridX, this.player.gridY + dy)) {
-        this.movePath = [];
-        return;
-      }
-    }
     const moved = this.player.tryMove(dx, dy, (gx, gy) => this.isTileWalkable(gx, gy));
     if (moved) {
       AudioManager.getInstance().playFootstep();
@@ -514,10 +523,6 @@ export class WorldScene extends Phaser.Scene {
       for (const d of dirs) {
         const nx = cx + d.x, ny = cy + d.y, nk = key(nx, ny);
         if (visited.has(nk) || !this.isTileWalkable(nx, ny)) continue;
-        // Diagonal: prevent corner-cutting in pathfinding
-        if (d.x !== 0 && d.y !== 0) {
-          if (!this.isTileWalkable(cx + d.x, cy) || !this.isTileWalkable(cx, cy + d.y)) continue;
-        }
         visited.add(nk);
         parent.set(nk, cur);
         if (nx === ex && ny === ey) { found = true; break; }
