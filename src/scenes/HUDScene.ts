@@ -279,6 +279,19 @@ export class HUDScene extends Phaser.Scene {
       if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(true);
       this.time.delayedCall(50, () => { if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(false); });
     });
+
+    // Mute toggle (right-aligned)
+    const audio = AudioManager.getInstance();
+    const muteLabel = audio.isMuted ? '\u266A off' : '\u266A on';
+    const muteColor = audio.isMuted ? COL.dim : COL.title;
+    const sz = this.fs(10);
+    const mt = this.mkText(0, y + 12, muteLabel, muteColor, sz);
+    mt.setX(GAME_WIDTH - mt.width - PAD);
+    this.actionObjs.push(mt);
+    const mz = this.add.zone(mt.x + mt.width / 2, y + 8, mt.width + 12, BTN_H)
+      .setDepth(25).setInteractive({ useHandCursor: true });
+    mz.on('pointerdown', () => { audio.toggleMute(); this.renderBottomBar(); });
+    this.clickZones.push(mz);
   }
 
   private addButton(x: number, y: number, label: string, color: number, cb: () => void): number {
