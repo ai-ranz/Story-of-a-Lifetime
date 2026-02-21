@@ -81,18 +81,22 @@ function generateVillageMap(): number[][] {
 
 function generateForestMap(): number[][] {
   const w = 80, h = 55, m: number[][] = [];
-  // Helper: is (x,y) on or adjacent to the main path?
-  function onPath(x: number, y: number): boolean {
-    // West segment: y 24-26, x 0-21
-    if (y >= 24 && y <= 26 && x <= 21) return true;
-    // Diagonal south-east: widen by ±1 around centreline
-    if (x >= 19 && x <= 41) {
-      const cy = 25 + Math.floor((x - 20) / 4);
-      if (y >= cy - 1 && y <= cy + 1) return true;
+  // Distance from (x,y) to the nearest point on the main path centreline
+  function pathDist(x: number, y: number): number {
+    let best = Infinity;
+    // West segment centreline: y=25, x 0-20
+    if (x <= 20) best = Math.min(best, Math.abs(y - 25));
+    // Diagonal centreline: x 20-40, cy = 25 + (x-20)/4
+    if (x >= 20 && x <= 40) {
+      const cy = 25 + (x - 20) / 4;
+      best = Math.min(best, Math.abs(y - cy));
     }
-    // Mid + east segment: y 29-31, x >= 37
-    if (y >= 29 && y <= 31 && x >= 37) return true;
-    return false;
+    // East segment centreline: y=30, x >= 38
+    if (x >= 38) best = Math.min(best, Math.abs(y - 30));
+    // Closest horizontal distance to segments
+    if (y >= 24 && y <= 26) best = Math.min(best, Math.max(0, x - 20));
+    if (y >= 29 && y <= 31) best = Math.min(best, Math.max(0, 38 - x));
+    return best;
   }
   for (let y = 0; y < h; y++) {
     m[y] = [];
@@ -102,20 +106,34 @@ function generateForestMap(): number[][] {
       if (x === 0) { m[y][x] = (y >= 24 && y <= 26) ? T.PATH : T.TREE; continue; }
       if (x === w - 1) { m[y][x] = (y >= 29 && y <= 31) ? T.PATH : T.TREE; continue; }
 
-      // Main path (3 tiles wide)
-      if (onPath(x, y)) { m[y][x] = T.PATH; continue; }
+      const pd = pathDist(x, y);
 
-      // A stream running north-south
-      if (x >= 50 && x <= 51 && y >= 5 && y <= 20) { m[y][x] = T.WATER; continue; }
-      if (x === 50 && y >= 20 && y <= 28) { m[y][x] = T.WATER; continue; }
+      // Main path core (3 tiles wide around centreline)
+      if (pd <= 1.5) { m[y][x] = T.PATH; continue; }
+
+      // Clear grass zone around path (no trees allowed within 4 tiles)
+      const nearPath = pd <= 4;
+
+      // A stream running north-south (but not if it blocks near-path area)
+      if (!nearPath) {
+        if (x >= 50 && x <= 51 && y >= 5 && y <= 20) { m[y][x] = T.WATER; continue; }
+        if (x === 50 && y >= 20 && y <= 28) { m[y][x] = T.WATER; continue; }
+      }
 
       // Small clearing (open grass area)
       const distFromClearing = Math.sqrt((x - 30) ** 2 + (y - 15) ** 2);
       if (distFromClearing < 5) { m[y][x] = T.GRASS; continue; }
 
-      // Dense forest with pseudo-random trees
+      // Second clearing near east exit
+      const distFromClearing2 = Math.sqrt((x - 65) ** 2 + (y - 30) ** 2);
+      if (distFromClearing2 < 4) { m[y][x] = T.GRASS; continue; }
+
+      // No trees in the clear zone around path
+      if (nearPath) { m[y][x] = T.GRASS; continue; }
+
+      // Forest trees with pseudo-random placement (lower density = more navigable)
       const treeNoise = Math.abs(Math.sin(x * 3.7 + y * 2.1) + Math.cos(x * 1.3 - y * 4.2));
-      if (treeNoise > 1.1) { m[y][x] = T.TREE; continue; }
+      if (treeNoise > 1.0) { m[y][x] = T.TREE; continue; }
 
       m[y][x] = T.GRASS;
     }
