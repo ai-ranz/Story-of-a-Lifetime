@@ -6,13 +6,13 @@
   "maps": [
     { "id": "village", "type": "static", "file": "village", "safeZone": true },
     { "id": "forest", "type": "static", "file": "forest", "encounterTable": "forest" },
-    { "id": "cave_floor1", "type": "procedural", "width": 30, "height": 22, "encounterTable": "cave_floor1" },
-    { "id": "cave_floor2", "type": "procedural", "width": 32, "height": 24, "encounterTable": "cave_floor2" },
-    { "id": "cave_floor3", "type": "procedural", "width": 34, "height": 26, "encounterTable": "cave_floor3" },
+    { "id": "cave_floor1", "type": "procedural", "width": 60, "height": 45, "encounterTable": "cave_floor1" },
+    { "id": "cave_floor2", "type": "procedural", "width": 65, "height": 50, "encounterTable": "cave_floor2" },
+    { "id": "cave_floor3", "type": "procedural", "width": 70, "height": 55, "encounterTable": "cave_floor3" },
     { "id": "cave_boss", "type": "static", "file": "cave_boss", "boss": "goblin_chief" }
   ],
   "startMap": "village",
-  "startPosition": { "x": 7, "y": 10 },
+  "startPosition": { "x": 35, "y": 30 },
   "startingItems": [],
   "story": {
     "intro": "You are a young boy living in a quiet village at the edge of the Whispering Woods. Lately, goblins have been raiding from a cave deep in the forest. Elder Thom has asked for your help.",

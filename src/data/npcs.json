@@ -4,27 +4,27 @@
     "spriteKey": "npc_elder",
     "dialogId": "elder_greetings",
     "map": "village",
-    "position": { "x": 8, "y": 5 }
+    "position": { "x": 10, "y": 24 }
   },
   "mother": {
     "name": "Mother",
     "spriteKey": "npc_mother",
     "dialogId": "mother_farewell",
     "map": "village",
-    "position": { "x": 4, "y": 8 }
+    "position": { "x": 10, "y": 29 }
   },
   "shopkeeper": {
     "name": "Brynn the Shopkeeper",
     "spriteKey": "npc_shopkeeper",
     "dialogId": "shopkeeper_intro",
     "map": "village",
-    "position": { "x": 12, "y": 6 }
+    "position": { "x": 20, "y": 24 }
   },
   "friend_kael": {
     "name": "Kael",
     "spriteKey": "npc_friend",
     "dialogId": "kael_encouragement",
     "map": "village",
-    "position": { "x": 6, "y": 10 }
+    "position": { "x": 45, "y": 24 }
   }
 }

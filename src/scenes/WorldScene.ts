@@ -28,46 +28,100 @@ interface MapExit { x: number; y: number; target: string; tx: number; ty: number
 interface StaticMapDef { width: number; height: number; tiles: number[][]; exits: MapExit[] }
 
 function generateVillageMap(): number[][] {
-  const w = 20, h = 15, m: number[][] = [];
+  const w = 70, h = 50, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      if (y === 0 || y === h - 1 || x === 0) m[y][x] = T.TREE;
-      else if (x === w - 1) m[y][x] = y === 7 ? T.PATH : T.TREE;
-      else if (y === 7) m[y][x] = T.PATH;
-      else if (x >= 3 && x <= 5 && y >= 3 && y <= 5) m[y][x] = (x === 4 && y === 5) ? T.DOOR : T.HOUSE_WALL;
-      else if (x >= 11 && x <= 13 && y >= 3 && y <= 5) m[y][x] = (x === 12 && y === 5) ? T.DOOR : T.HOUSE_WALL;
-      else if (x >= 3 && x <= 5 && y >= 9 && y <= 11) m[y][x] = (x === 4 && y === 9) ? T.DOOR : T.HOUSE_WALL;
-      else if (x >= 15 && x <= 17 && y >= 10 && y <= 12) m[y][x] = T.WATER;
-      else m[y][x] = T.GRASS;
+      // Border trees
+      if (y === 0 || y === h - 1 || x === 0) { m[y][x] = T.TREE; continue; }
+      if (x === w - 1) { m[y][x] = y === 25 ? T.PATH : T.TREE; continue; }
+
+      // Main east-west road
+      if (y === 25 && x >= 1) { m[y][x] = T.PATH; continue; }
+      // North-south cross road
+      if (x === 35 && y >= 10 && y <= 40) { m[y][x] = T.PATH; continue; }
+
+      // -- Houses row 1 (north of road) --
+      // Elder's house
+      if (x >= 8 && x <= 12 && y >= 18 && y <= 22) { m[y][x] = (x === 10 && y === 22) ? T.DOOR : T.HOUSE_WALL; continue; }
+      // Blacksmith
+      if (x >= 18 && x <= 22 && y >= 18 && y <= 22) { m[y][x] = (x === 20 && y === 22) ? T.DOOR : T.HOUSE_WALL; continue; }
+      // Inn
+      if (x >= 42 && x <= 48 && y >= 18 && y <= 23) { m[y][x] = (x === 45 && y === 23) ? T.DOOR : T.HOUSE_WALL; continue; }
+
+      // -- Houses row 2 (south of road) --
+      // General store
+      if (x >= 8 && x <= 12 && y >= 28 && y <= 32) { m[y][x] = (x === 10 && y === 28) ? T.DOOR : T.HOUSE_WALL; continue; }
+      // Chapel
+      if (x >= 20 && x <= 26 && y >= 28 && y <= 33) { m[y][x] = (x === 23 && y === 28) ? T.DOOR : T.HOUSE_WALL; continue; }
+      // Farm houses
+      if (x >= 50 && x <= 54 && y >= 30 && y <= 34) { m[y][x] = (x === 52 && y === 30) ? T.DOOR : T.HOUSE_WALL; continue; }
+      if (x >= 58 && x <= 62 && y >= 30 && y <= 34) { m[y][x] = (x === 60 && y === 30) ? T.DOOR : T.HOUSE_WALL; continue; }
+
+      // Village pond (south-east)
+      if (x >= 52 && x <= 58 && y >= 38 && y <= 42) { m[y][x] = T.WATER; continue; }
+
+      // Scattered trees for atmosphere
+      if ((x < 5 || x > w - 5) && Math.abs(Math.sin(x * 2.3 + y * 1.7)) > 0.75) { m[y][x] = T.TREE; continue; }
+      if (y < 8 && Math.abs(Math.sin(x * 3.1 + y * 2.7)) > 0.7) { m[y][x] = T.TREE; continue; }
+      if (y > 42 && Math.abs(Math.sin(x * 1.9 + y * 3.3)) > 0.7) { m[y][x] = T.TREE; continue; }
+
+      // Garden patches near farm houses
+      if (x >= 50 && x <= 62 && y >= 36 && y <= 37 && x % 2 === 0) { m[y][x] = T.GRASS; continue; }
+
+      m[y][x] = T.GRASS;
     }
   }
   return m;
 }
 
 function generateForestMap(): number[][] {
-  const w = 30, h = 20, m: number[][] = [];
+  const w = 80, h = 55, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      if (y === 0 || y === h - 1) m[y][x] = T.TREE;
-      else if (x === 0) m[y][x] = y === 7 ? T.PATH : T.TREE;
-      else if (x === w - 1) m[y][x] = y === 10 ? T.PATH : T.TREE;
-      else if ((y === 7 && x <= 10) || (x === 10 && y >= 7 && y <= 10) || (y === 10 && x >= 10)) m[y][x] = T.PATH;
-      else if (Math.abs(Math.sin(x * 3.7 + y * 2.1)) > 0.65) m[y][x] = T.TREE;
-      else m[y][x] = T.GRASS;
+      // Border trees
+      if (y === 0 || y === h - 1) { m[y][x] = T.TREE; continue; }
+      if (x === 0) { m[y][x] = y === 25 ? T.PATH : T.TREE; continue; }
+      if (x === w - 1) { m[y][x] = y === 30 ? T.PATH : T.TREE; continue; }
+
+      // Main winding path through forest: west entrance → east exit
+      // West segment (horizontal)
+      if (y === 25 && x <= 20) { m[y][x] = T.PATH; continue; }
+      // Diagonal south-east
+      if (x >= 20 && x <= 40 && y === 25 + Math.floor((x - 20) / 4)) { m[y][x] = T.PATH; continue; }
+      // Mid segment (horizontal)
+      if (y === 30 && x >= 38 && x <= 60) { m[y][x] = T.PATH; continue; }
+      // East segment to exit
+      if (y === 30 && x >= 60) { m[y][x] = T.PATH; continue; }
+
+      // A stream running north-south
+      if (x >= 50 && x <= 51 && y >= 5 && y <= 20) { m[y][x] = T.WATER; continue; }
+      if (x === 50 && y >= 20 && y <= 28) { m[y][x] = T.WATER; continue; }
+
+      // Small clearing (open grass area)
+      const distFromClearing = Math.sqrt((x - 30) ** 2 + (y - 15) ** 2);
+      if (distFromClearing < 5) { m[y][x] = T.GRASS; continue; }
+
+      // Dense forest with pseudo-random trees
+      const treeNoise = Math.abs(Math.sin(x * 3.7 + y * 2.1) + Math.cos(x * 1.3 - y * 4.2));
+      if (treeNoise > 1.1) { m[y][x] = T.TREE; continue; }
+
+      m[y][x] = T.GRASS;
     }
   }
   return m;
 }
 
 function generateBossRoom(): number[][] {
-  const w = 15, h = 12, m: number[][] = [];
+  const w = 55, h = 40, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
       if (y === 0 || x === 0 || x === w - 1) m[y][x] = T.WALL;
-      else if (y === h - 1) m[y][x] = x === 7 ? T.STAIRS_UP : T.WALL;
+      else if (y === h - 1) m[y][x] = x === Math.floor(w / 2) ? T.STAIRS_UP : T.WALL;
+      // Pillars around the arena edges
+      else if ((x === 5 || x === w - 6) && y % 6 === 3 && y > 3 && y < h - 4) m[y][x] = T.WALL;
       else m[y][x] = T.FLOOR;
     }
   }
@@ -75,9 +129,9 @@ function generateBossRoom(): number[][] {
 }
 
 const STATIC_MAPS: Record<string, StaticMapDef> = {
-  village: { width: 20, height: 15, tiles: generateVillageMap(), exits: [{ x: 19, y: 7, target: 'forest', tx: 1, ty: 7 }] },
-  forest: { width: 30, height: 20, tiles: generateForestMap(), exits: [{ x: 0, y: 7, target: 'village', tx: 18, ty: 7 }, { x: 29, y: 10, target: 'cave_floor1', tx: -1, ty: -1 }] },
-  cave_boss: { width: 15, height: 12, tiles: generateBossRoom(), exits: [{ x: 7, y: 11, target: 'cave_floor3', tx: -1, ty: -1 }] },
+  village: { width: 70, height: 50, tiles: generateVillageMap(), exits: [{ x: 69, y: 25, target: 'forest', tx: 1, ty: 25 }] },
+  forest: { width: 80, height: 55, tiles: generateForestMap(), exits: [{ x: 0, y: 25, target: 'village', tx: 68, ty: 25 }, { x: 79, y: 30, target: 'cave_floor1', tx: -1, ty: -1 }] },
+  cave_boss: { width: 55, height: 40, tiles: generateBossRoom(), exits: [{ x: 27, y: 39, target: 'cave_floor3', tx: -1, ty: -1 }] },
 };
 
 export class WorldScene extends Phaser.Scene {
