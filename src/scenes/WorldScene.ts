@@ -138,6 +138,33 @@ function generateForestMap(): number[][] {
       m[y][x] = T.GRASS;
     }
   }
+
+  // Post-process: flood-fill from path entrance, convert any unreachable
+  // grass tiles to trees so the player can't wander into dead-end pockets.
+  const reachable = new Set<number>();
+  const q: number[] = [25 * 10000 + 1]; // start at (1,25) — entrance
+  reachable.add(q[0]);
+  const solid = new Set([T.WALL, T.TREE, T.WATER, T.HOUSE_WALL, T.HOUSE_ROOF]);
+  while (q.length) {
+    const k = q.pop()!;
+    const cx = k % 10000, cy = (k - cx) / 10000;
+    for (const [dx, dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]] as [number,number][]) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nk = ny * 10000 + nx;
+      if (reachable.has(nk)) continue;
+      if (solid.has(m[ny][nx])) continue;
+      reachable.add(nk);
+      q.push(nk);
+    }
+  }
+  // Any grass tile NOT reachable → tree (removes dead-end pockets)
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (m[y][x] === T.GRASS && !reachable.has(y * 10000 + x)) m[y][x] = T.TREE;
+    }
+  }
+
   return m;
 }
 
@@ -500,10 +527,11 @@ export class WorldScene extends Phaser.Scene {
     this.updateNpcVisibility();
     this.updateEnemyVisibility();
 
-    // Check for enemy contact BEFORE exits/stairs (bumping into enemy = combat)
-    if (this.checkEnemyContact()) return;
-
+    // Check exits before enemy contact — if on transition tile, leave the map
     this.checkExits();
+
+    // Check for enemy contact (bumping into enemy = combat)
+    if (this.checkEnemyContact()) return;
     this.checkStairs();
     this.checkChest();
     this.checkEncounter();
@@ -587,8 +615,13 @@ export class WorldScene extends Phaser.Scene {
   private checkExits(): void {
     const def = STATIC_MAPS[this.currentMapId];
     if (!def) return;
+    const px = this.player.gridX, py = this.player.gridY;
     for (const e of def.exits) {
-      if (this.player.gridX === e.x && this.player.gridY === e.y) {
+      // Trigger exit when within 2 tiles of the border exit
+      if (Math.abs(px - e.x) + Math.abs(py - e.y) <= 2 &&
+          // Must be on the correct edge side
+          ((e.x <= 1 && px <= 2) || (e.x >= this.mapW - 2 && px >= this.mapW - 3) ||
+           (e.y <= 1 && py <= 2) || (e.y >= this.mapH - 2 && py >= this.mapH - 3))) {
         this.loadMap(e.target, e.tx, e.ty);
         return;
       }
