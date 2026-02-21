@@ -259,8 +259,9 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
 
-      // Clicked walkable tile
-      if (this.isTileWalkable(gx, gy)) {
+      // Clicked walkable tile — allow if explored or visible (not hidden fog)
+      const fogState = this.fog?.getVisibility(gx, gy) ?? Visibility.UNSEEN;
+      if (fogState !== Visibility.UNSEEN && this.isTileWalkable(gx, gy)) {
         const path = this.findPath(this.player.gridX, this.player.gridY, gx, gy);
         if (path.length > 0) this.movePath = path;
       }
@@ -492,10 +493,11 @@ export class WorldScene extends Phaser.Scene {
     this.panel()?.refreshStats();
   }
 
-  // ====== Pathfinding (BFS, max 300 nodes) ======
+  // ====== Pathfinding (BFS, scales to full map) ======
 
   findPath(sx: number, sy: number, ex: number, ey: number): { x: number; y: number }[] {
     if (sx === ex && sy === ey) return [];
+    const maxNodes = this.mapW * this.mapH;
     const key = (x: number, y: number) => y * 10000 + x;
     const visited = new Set<number>([key(sx, sy)]);
     const parent = new Map<number, number>();
@@ -506,7 +508,7 @@ export class WorldScene extends Phaser.Scene {
     ];
     let found = false;
     let head = 0;
-    while (head < queue.length && !found && visited.size < 300) {
+    while (head < queue.length && !found && visited.size < maxNodes) {
       const cur = queue[head++];
       const cx = cur % 10000, cy = Math.floor(cur / 10000);
       for (const d of dirs) {
