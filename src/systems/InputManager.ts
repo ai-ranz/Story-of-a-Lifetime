@@ -98,11 +98,6 @@ export class InputManager {
       else if (this.keys.down.isDown || this.keys.s.isDown) dy = 1;
     }
 
-    // Prioritize one axis (no diagonal in grid movement)
-    if (dx !== 0 && dy !== 0) {
-      dy = 0; // horizontal takes priority
-    }
-
     return {
       direction: { x: dx, y: dy },
       action: this.isActionDown(),

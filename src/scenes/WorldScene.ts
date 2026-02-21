@@ -339,6 +339,21 @@ export class WorldScene extends Phaser.Scene {
     if (!def) return;
     this.mapW = def.width; this.mapH = def.height; this.currentTiles = def.tiles;
     this.buildTilemap(def.tiles, def.width, def.height);
+    // Handle -1,-1 spawn (coming from dungeon stairs): place near the cave exit
+    if (sx < 0 || sy < 0) {
+      const caveExit = def.exits.find(e => e.target.startsWith('cave'));
+      if (caveExit) {
+        sx = caveExit.x > 0 ? caveExit.x - 1 : caveExit.x + 1;
+        sy = caveExit.y;
+      } else {
+        // Fallback: first walkable tile
+        outer: for (let y = 0; y < def.height; y++) {
+          for (let x = 0; x < def.width; x++) {
+            if (!SOLID.has(def.tiles[y][x])) { sx = x; sy = y; break outer; }
+          }
+        }
+      }
+    }
     const cd = (classesData as any)[this.character.class];
     this.player = EntityFactory.createPlayer(this, sx, sy, cd.spriteKey);
     this.npcs = EntityFactory.createNPCsForMap(this, mapId);
@@ -394,12 +409,19 @@ export class WorldScene extends Phaser.Scene {
       const pad = this.inputManager.getPadDirection();
       dx = pad.x; dy = pad.y;
     }
-    if (dx !== 0 && dy !== 0) dy = 0;
     return (dx || dy) ? { x: dx, y: dy } : null;
   }
 
   private doMove(dx: number, dy: number): void {
     if (!dx && !dy) return;
+    // Diagonal: block corner-cutting — both adjacent orthogonal tiles must be passable
+    if (dx !== 0 && dy !== 0) {
+      if (!this.isTileWalkable(this.player.gridX + dx, this.player.gridY) ||
+          !this.isTileWalkable(this.player.gridX, this.player.gridY + dy)) {
+        this.movePath = [];
+        return;
+      }
+    }
     const moved = this.player.tryMove(dx, dy, (gx, gy) => this.isTileWalkable(gx, gy));
     if (moved) {
       AudioManager.getInstance().playFootstep();
@@ -455,7 +477,10 @@ export class WorldScene extends Phaser.Scene {
     const visited = new Set<number>([key(sx, sy)]);
     const parent = new Map<number, number>();
     const queue = [key(sx, sy)];
-    const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+    const dirs = [
+      { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
+      { x: -1, y: -1 }, { x: 1, y: -1 }, { x: -1, y: 1 }, { x: 1, y: 1 },
+    ];
     let found = false;
     let head = 0;
     while (head < queue.length && !found && visited.size < 300) {
@@ -464,6 +489,10 @@ export class WorldScene extends Phaser.Scene {
       for (const d of dirs) {
         const nx = cx + d.x, ny = cy + d.y, nk = key(nx, ny);
         if (visited.has(nk) || !this.isTileWalkable(nx, ny)) continue;
+        // Diagonal: prevent corner-cutting in pathfinding
+        if (d.x !== 0 && d.y !== 0) {
+          if (!this.isTileWalkable(cx + d.x, cy) || !this.isTileWalkable(cx, cy + d.y)) continue;
+        }
         visited.add(nk);
         parent.set(nk, cur);
         if (nx === ex && ny === ey) { found = true; break; }
