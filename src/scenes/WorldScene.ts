@@ -527,12 +527,17 @@ export class WorldScene extends Phaser.Scene {
     this.updateNpcVisibility();
     this.updateEnemyVisibility();
 
+    // Track current map — if any check triggers loadMap, stop processing
+    const mapBefore = this.currentMapId;
+
     // Check exits before enemy contact — if on transition tile, leave the map
     this.checkExits();
+    if (this.currentMapId !== mapBefore) return;
 
     // Check for enemy contact (bumping into enemy = combat)
     if (this.checkEnemyContact()) return;
     this.checkStairs();
+    if (this.currentMapId !== mapBefore) return;
     this.checkChest();
     this.checkEncounter();
 

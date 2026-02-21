@@ -120,6 +120,15 @@ export class DungeonGenerator {
     tiles[startY][startX] = DUNGEON_TILE.STAIRS_UP;
     tiles[exitY][exitX] = DUNGEON_TILE.STAIRS_DOWN;
 
+    // Player spawns adjacent to stairs-up, not on them (avoids auto-trigger)
+    let spawnX = startX, spawnY = startY;
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = startX + dx, ny = startY + dy;
+      if (nx > 0 && ny > 0 && nx < width - 1 && ny < height - 1 && tiles[ny][nx] === DUNGEON_TILE.FLOOR) {
+        spawnX = nx; spawnY = ny; break;
+      }
+    }
+
     // Place a few chests in random rooms (not start/exit)
     const midRooms = rooms.slice(1, -1);
     const chestCount = Math.min(midRooms.length, 1 + floor);
@@ -132,7 +141,7 @@ export class DungeonGenerator {
       }
     }
 
-    return { width, height, tiles, rooms, startX, startY, exitX, exitY };
+    return { width, height, tiles, rooms, startX: spawnX, startY: spawnY, exitX, exitY };
   }
 
   private static carveCorridor(
