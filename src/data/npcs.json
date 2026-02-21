@@ -1,0 +1,30 @@
+{
+  "elder_thom": {
+    "name": "Elder Thom",
+    "spriteKey": "npc_elder",
+    "dialogId": "elder_greetings",
+    "map": "village",
+    "position": { "x": 8, "y": 5 }
+  },
+  "mother": {
+    "name": "Mother",
+    "spriteKey": "npc_mother",
+    "dialogId": "mother_farewell",
+    "map": "village",
+    "position": { "x": 4, "y": 8 }
+  },
+  "shopkeeper": {
+    "name": "Brynn the Shopkeeper",
+    "spriteKey": "npc_shopkeeper",
+    "dialogId": "shopkeeper_intro",
+    "map": "village",
+    "position": { "x": 12, "y": 6 }
+  },
+  "friend_kael": {
+    "name": "Kael",
+    "spriteKey": "npc_friend",
+    "dialogId": "kael_encouragement",
+    "map": "village",
+    "position": { "x": 6, "y": 10 }
+  }
+}

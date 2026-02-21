@@ -1,0 +1,66 @@
+{
+  "forest_wolf": {
+    "name": "Forest Wolf",
+    "spriteKey": "enemy_wolf",
+    "stats": { "hp": 20, "mp": 0, "attack": 8, "defense": 3, "speed": 7, "magic": 0 },
+    "skills": [],
+    "ai": "aggressive",
+    "loot": [
+      { "itemId": "herb", "chance": 0.4 },
+      { "itemId": "health_potion", "chance": 0.1 }
+    ],
+    "xpReward": 12,
+    "goldReward": 5
+  },
+  "wild_boar": {
+    "name": "Wild Boar",
+    "spriteKey": "enemy_boar",
+    "stats": { "hp": 30, "mp": 0, "attack": 10, "defense": 6, "speed": 4, "magic": 0 },
+    "skills": [],
+    "ai": "aggressive",
+    "loot": [
+      { "itemId": "herb", "chance": 0.3 }
+    ],
+    "xpReward": 15,
+    "goldReward": 8
+  },
+  "goblin": {
+    "name": "Goblin",
+    "spriteKey": "enemy_goblin",
+    "stats": { "hp": 25, "mp": 5, "attack": 9, "defense": 4, "speed": 6, "magic": 3 },
+    "skills": [],
+    "ai": "aggressive",
+    "loot": [
+      { "itemId": "health_potion", "chance": 0.2 },
+      { "itemId": "wooden_sword", "chance": 0.05 }
+    ],
+    "xpReward": 18,
+    "goldReward": 12
+  },
+  "goblin_archer": {
+    "name": "Goblin Archer",
+    "spriteKey": "enemy_goblin_archer",
+    "stats": { "hp": 18, "mp": 5, "attack": 12, "defense": 3, "speed": 8, "magic": 2 },
+    "skills": ["quick_slash"],
+    "ai": "defensive",
+    "loot": [
+      { "itemId": "health_potion", "chance": 0.15 }
+    ],
+    "xpReward": 20,
+    "goldReward": 14
+  },
+  "goblin_chief": {
+    "name": "Goblin Chief",
+    "spriteKey": "enemy_goblin_chief",
+    "stats": { "hp": 80, "mp": 10, "attack": 16, "defense": 10, "speed": 5, "magic": 5 },
+    "skills": ["power_strike"],
+    "ai": "aggressive",
+    "loot": [
+      { "itemId": "short_sword", "chance": 0.5 },
+      { "itemId": "health_potion", "chance": 1.0 }
+    ],
+    "xpReward": 80,
+    "goldReward": 50,
+    "boss": true
+  }
+}

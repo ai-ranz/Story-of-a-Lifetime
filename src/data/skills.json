@@ -1,0 +1,44 @@
+{
+  "power_strike": {
+    "name": "Power Strike",
+    "type": "physical",
+    "target": "single_enemy",
+    "mpCost": 3,
+    "power": 1.5,
+    "description": "A powerful melee strike dealing 1.5x attack damage."
+  },
+  "fire_bolt": {
+    "name": "Fire Bolt",
+    "type": "magic",
+    "target": "single_enemy",
+    "mpCost": 5,
+    "power": 2.0,
+    "element": "fire",
+    "description": "Hurl a bolt of fire at one enemy."
+  },
+  "quick_slash": {
+    "name": "Quick Slash",
+    "type": "physical",
+    "target": "single_enemy",
+    "mpCost": 2,
+    "power": 1.2,
+    "bonusCritChance": 0.2,
+    "description": "A fast slash with increased critical hit chance."
+  },
+  "heal": {
+    "name": "Heal",
+    "type": "magic",
+    "target": "single_ally",
+    "mpCost": 6,
+    "power": 1.5,
+    "description": "Restore HP to one ally based on magic stat."
+  },
+  "defend": {
+    "name": "Defend",
+    "type": "buff",
+    "target": "self",
+    "mpCost": 0,
+    "effect": { "stat": "defense", "multiplier": 2.0, "duration": 1 },
+    "description": "Double defense until your next turn."
+  }
+}

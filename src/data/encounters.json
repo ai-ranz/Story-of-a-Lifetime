@@ -1,0 +1,38 @@
+{
+  "forest": {
+    "encounterRate": 0.15,
+    "enemies": [
+      { "id": "forest_wolf", "weight": 3 },
+      { "id": "wild_boar", "weight": 2 }
+    ],
+    "minEnemies": 1,
+    "maxEnemies": 2
+  },
+  "cave_floor1": {
+    "encounterRate": 0.2,
+    "enemies": [
+      { "id": "goblin", "weight": 4 },
+      { "id": "goblin_archer", "weight": 2 }
+    ],
+    "minEnemies": 1,
+    "maxEnemies": 2
+  },
+  "cave_floor2": {
+    "encounterRate": 0.22,
+    "enemies": [
+      { "id": "goblin", "weight": 3 },
+      { "id": "goblin_archer", "weight": 3 }
+    ],
+    "minEnemies": 1,
+    "maxEnemies": 3
+  },
+  "cave_floor3": {
+    "encounterRate": 0.25,
+    "enemies": [
+      { "id": "goblin", "weight": 2 },
+      { "id": "goblin_archer", "weight": 4 }
+    ],
+    "minEnemies": 2,
+    "maxEnemies": 3
+  }
+}

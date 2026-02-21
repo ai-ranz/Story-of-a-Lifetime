@@ -1,0 +1,92 @@
+{
+  "elder_greetings": {
+    "id": "elder_greetings",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "Ah, young one. Dark times have come to our village. Goblins have taken over the cave in the Whispering Woods.",
+        "choices": [
+          { "text": "What can I do?", "next": "explain" },
+          { "text": "Sounds dangerous...", "next": "encourage" }
+        ]
+      },
+      "explain": {
+        "speaker": "Elder Thom",
+        "text": "You must venture through the forest and clear the cave. It will not be easy, but I believe in you. Take this blade.",
+        "action": "giveItem:wooden_sword",
+        "next": "farewell"
+      },
+      "encourage": {
+        "speaker": "Elder Thom",
+        "text": "Dangerous indeed, but you have the heart of a hero. The village needs you. Will you help us?",
+        "choices": [
+          { "text": "I'll do it.", "next": "explain" },
+          { "text": "Let me prepare first.", "next": "farewell" }
+        ]
+      },
+      "farewell": {
+        "speaker": "Elder Thom",
+        "text": "May the old gods watch over you. Speak to Brynn if you need supplies.",
+        "action": "startQuest:clear_the_cave",
+        "next": null
+      }
+    }
+  },
+  "mother_farewell": {
+    "id": "mother_farewell",
+    "nodes": {
+      "start": {
+        "speaker": "Mother",
+        "text": "Be careful out there, dear. I packed you some herbs for the road.",
+        "action": "giveItem:herb",
+        "next": "end"
+      },
+      "end": {
+        "speaker": "Mother",
+        "text": "Come home safe. I'll be waiting.",
+        "next": null
+      }
+    }
+  },
+  "shopkeeper_intro": {
+    "id": "shopkeeper_intro",
+    "nodes": {
+      "start": {
+        "speaker": "Brynn",
+        "text": "Welcome! I've got potions and gear. What do you need?",
+        "choices": [
+          { "text": "Show me what you have.", "next": "shop", "action": "openShop" },
+          { "text": "Just looking. Goodbye.", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Brynn",
+        "text": "Take your time. Good gear keeps you alive!",
+        "next": null
+      }
+    }
+  },
+  "kael_encouragement": {
+    "id": "kael_encouragement",
+    "nodes": {
+      "start": {
+        "speaker": "Kael",
+        "text": "Hey! I heard Elder Thom gave you a mission. That's so cool! I wish I could come with you.",
+        "choices": [
+          { "text": "Maybe next time.", "next": "next_time" },
+          { "text": "I'm a bit nervous.", "next": "nervous" }
+        ]
+      },
+      "next_time": {
+        "speaker": "Kael",
+        "text": "You bet! Bring me back a goblin tooth as a souvenir!",
+        "next": null
+      },
+      "nervous": {
+        "speaker": "Kael",
+        "text": "Don't worry, you've always been the brave one. Besides, I heard the forest herbs can patch you up in a pinch!",
+        "next": null
+      }
+    }
+  }
+}

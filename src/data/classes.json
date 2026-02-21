@@ -1,0 +1,26 @@
+{
+  "warrior": {
+    "name": "Warrior",
+    "description": "Strong and resilient. Masters swords and heavy armor.",
+    "baseStats": { "hp": 50, "mp": 10, "attack": 12, "defense": 10, "speed": 6, "magic": 4 },
+    "growth": { "hp": 8, "mp": 2, "attack": 3, "defense": 3, "speed": 1, "magic": 1 },
+    "startingSkills": ["power_strike"],
+    "spriteKey": "player_warrior"
+  },
+  "mage": {
+    "name": "Mage",
+    "description": "Wields arcane magic. Fragile but devastating.",
+    "baseStats": { "hp": 30, "mp": 40, "attack": 5, "defense": 4, "speed": 7, "magic": 14 },
+    "growth": { "hp": 4, "mp": 6, "attack": 1, "defense": 1, "speed": 2, "magic": 4 },
+    "startingSkills": ["fire_bolt"],
+    "spriteKey": "player_mage"
+  },
+  "rogue": {
+    "name": "Rogue",
+    "description": "Quick and cunning. Excels at critical hits and evasion.",
+    "baseStats": { "hp": 38, "mp": 20, "attack": 9, "defense": 6, "speed": 12, "magic": 7 },
+    "growth": { "hp": 5, "mp": 3, "attack": 2, "defense": 2, "speed": 3, "magic": 2 },
+    "startingSkills": ["quick_slash"],
+    "spriteKey": "player_rogue"
+  }
+}

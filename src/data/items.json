@@ -1,0 +1,83 @@
+{
+  "health_potion": {
+    "name": "Health Potion",
+    "type": "consumable",
+    "spriteKey": "item_potion_red",
+    "effects": [{ "type": "heal", "value": 25 }],
+    "stackable": true,
+    "maxStack": 10,
+    "description": "Restores 25 HP.",
+    "value": 15
+  },
+  "mana_potion": {
+    "name": "Mana Potion",
+    "type": "consumable",
+    "spriteKey": "item_potion_blue",
+    "effects": [{ "type": "restore_mp", "value": 15 }],
+    "stackable": true,
+    "maxStack": 10,
+    "description": "Restores 15 MP.",
+    "value": 20
+  },
+  "wooden_sword": {
+    "name": "Wooden Sword",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_sword_wood",
+    "statModifiers": { "attack": 3 },
+    "teachesSkill": null,
+    "masteryRequired": 0,
+    "description": "A simple wooden practice sword. +3 Attack.",
+    "value": 10
+  },
+  "short_sword": {
+    "name": "Short Sword",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_sword_short",
+    "statModifiers": { "attack": 6 },
+    "teachesSkill": "power_strike",
+    "masteryRequired": 5,
+    "description": "A sturdy iron short sword. +6 Attack. Teaches Power Strike.",
+    "value": 50
+  },
+  "apprentice_staff": {
+    "name": "Apprentice Staff",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_staff",
+    "statModifiers": { "magic": 5, "attack": 2 },
+    "teachesSkill": "fire_bolt",
+    "masteryRequired": 5,
+    "description": "A staff crackling with minor magic. +5 Magic, +2 Attack. Teaches Fire Bolt.",
+    "value": 60
+  },
+  "leather_armor": {
+    "name": "Leather Armor",
+    "type": "equipment",
+    "slot": "armor",
+    "spriteKey": "item_armor_leather",
+    "statModifiers": { "defense": 4 },
+    "teachesSkill": null,
+    "masteryRequired": 0,
+    "description": "Basic leather armor. +4 Defense.",
+    "value": 30
+  },
+  "herb": {
+    "name": "Forest Herb",
+    "type": "consumable",
+    "spriteKey": "item_herb",
+    "effects": [{ "type": "heal", "value": 10 }],
+    "stackable": true,
+    "maxStack": 20,
+    "description": "A common herb. Restores 10 HP.",
+    "value": 5
+  },
+  "cave_key": {
+    "name": "Cave Key",
+    "type": "key_item",
+    "spriteKey": "item_key",
+    "description": "An old key found near the cave entrance.",
+    "value": 0
+  }
+}
