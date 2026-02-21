@@ -617,11 +617,7 @@ export class WorldScene extends Phaser.Scene {
     if (!def) return;
     const px = this.player.gridX, py = this.player.gridY;
     for (const e of def.exits) {
-      // Trigger exit when within 2 tiles of the border exit
-      if (Math.abs(px - e.x) + Math.abs(py - e.y) <= 2 &&
-          // Must be on the correct edge side
-          ((e.x <= 1 && px <= 2) || (e.x >= this.mapW - 2 && px >= this.mapW - 3) ||
-           (e.y <= 1 && py <= 2) || (e.y >= this.mapH - 2 && py >= this.mapH - 3))) {
+      if (px === e.x && py === e.y) {
         this.loadMap(e.target, e.tx, e.ty);
         return;
       }
