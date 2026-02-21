@@ -4,7 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { ClassSelectScene } from './scenes/ClassSelectScene';
 import { WorldScene } from './scenes/WorldScene';
-import { SidePanelScene } from './scenes/SidePanelScene';
+import { HUDScene } from './scenes/HUDScene';
 import { GameOverScene } from './scenes/GameOverScene';
 import { ChapterCompleteScene } from './scenes/ChapterCompleteScene';
 
@@ -15,7 +15,7 @@ const config: Phaser.Types.Core.GameConfig = {
     MainMenuScene,
     ClassSelectScene,
     WorldScene,
-    SidePanelScene,
+    HUDScene,
     GameOverScene,
     ChapterCompleteScene,
   ],

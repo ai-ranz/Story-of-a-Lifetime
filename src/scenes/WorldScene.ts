@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, MOVE_DURATION } from '../config';
+import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MOVE_DURATION, VIEW_RADIUS } from '../config';
 import { Player } from '../entities/Player';
 import { NPC } from '../entities/NPC';
 import { EntityFactory } from '../entities/EntityFactory';
@@ -7,6 +7,7 @@ import { SaveSystem, RunState, CharacterState } from '../systems/SaveSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { DungeonGenerator, DUNGEON_TILE, DungeonMap } from '../systems/DungeonGenerator';
+import { FogOfWar, Visibility } from '../systems/FogOfWar';
 import { rollFloat, rollInt } from '../utils/MathUtils';
 import encountersData from '../data/encounters.json';
 import chapter1Data from '../data/chapters/chapter1.json';
@@ -94,6 +95,8 @@ export class WorldScene extends Phaser.Scene {
   private mapW = 0;
   private mapH = 0;
   private dungeonMap: DungeonMap | null = null;
+  private fog!: FogOfWar;
+  private fogGfx!: Phaser.GameObjects.Graphics;
   private moveTimer = 0;
   private stepsSinceEncounter = 0;
   private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -116,8 +119,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Map camera covers left portion only
-    this.cameras.main.setViewport(0, 0, MAP_WIDTH, MAP_HEIGHT);
+    // Full-screen map viewport — HUD overlays on top
+    this.cameras.main.setViewport(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
     if (this.input.keyboard) {
       this.cursorKeys = this.input.keyboard.createCursorKeys();
@@ -133,11 +136,10 @@ export class WorldScene extends Phaser.Scene {
     }
 
     this.loadMap(this.run.currentMap, this.run.position.x, this.run.position.y);
-    this.scene.launch('SidePanelScene', { worldScene: this });
+    this.scene.launch('HUDScene', { worldScene: this });
 
     if (!this.quests.getStoryFlag('chapter_intro_shown')) {
       this.quests.setStoryFlag('chapter_intro_shown', true);
-      // Slight delay so panel is ready
       this.time.delayedCall(100, () => {
         this.panel()?.addMessage(chapter1Data.story.intro, '#aaddff');
       });
@@ -231,6 +233,7 @@ export class WorldScene extends Phaser.Scene {
     this.npcs.forEach(n => n.destroy());
     this.npcs = [];
     if (this.player) this.player.destroy();
+    if (this.fogGfx) this.fogGfx.destroy();
     this.dungeonMap = null;
     this.currentMapId = mapId;
     this.stepsSinceEncounter = 0;
@@ -239,6 +242,13 @@ export class WorldScene extends Phaser.Scene {
     const chapterMap = chapter1Data.maps.find(m => m.id === mapId);
     if (chapterMap?.type === 'procedural') this.loadProcedural(mapId, chapterMap, startX, startY);
     else this.loadStatic(mapId, startX, startY);
+
+    // Initialize fog of war
+    this.fog = new FogOfWar(this.mapW, this.mapH, (x, y) => this.tileBlocksVision(x, y));
+    this.fogGfx = this.add.graphics().setDepth(100);
+    this.fog.update(this.player.gridX, this.player.gridY, VIEW_RADIUS);
+    this.renderFog();
+    this.updateNpcVisibility();
 
     this.run.currentMap = mapId;
     this.run.position = { x: this.player.gridX, y: this.player.gridY };
@@ -321,6 +331,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private onStep(): void {
+    // Update fog of war
+    this.fog.update(this.player.gridX, this.player.gridY, VIEW_RADIUS);
+    this.renderFog();
+    this.updateNpcVisibility();
+
     this.checkExits();
     this.checkStairs();
     this.checkChest();
@@ -484,7 +499,7 @@ export class WorldScene extends Phaser.Scene {
 
   onCombatDefeat(): void {
     SaveSystem.deleteRun();
-    this.scene.stop('SidePanelScene');
+    this.scene.stop('HUDScene');
     this.scene.start('GameOverScene', { character: this.character });
   }
 
@@ -494,7 +509,7 @@ export class WorldScene extends Phaser.Scene {
     this.character.completedChapters.push(chapter1Data.id);
     SaveSystem.saveCharacter(this.character);
     SaveSystem.deleteRun();
-    this.scene.stop('SidePanelScene');
+    this.scene.stop('HUDScene');
     this.scene.start('ChapterCompleteScene', { character: this.character, chapterTitle: chapter1Data.title, outro: chapter1Data.story.outro });
   }
 
@@ -505,7 +520,39 @@ export class WorldScene extends Phaser.Scene {
     else if (cmd === 'startQuest') { this.quests.setQuestFlag(arg, false); this.saveRun(); }
   }
 
-  panel(): any { return this.scene.get('SidePanelScene'); }
+  panel(): any { return this.scene.get('HUDScene'); }
+
+  // ====== Fog of War rendering ======
+
+  /** Returns true if the tile blocks line of sight */
+  private tileBlocksVision(gx: number, gy: number): boolean {
+    if (gx < 0 || gy < 0 || gy >= this.mapH || gx >= this.mapW) return true;
+    const t = this.currentTiles[gy]?.[gx];
+    return t !== undefined && SOLID.has(t);
+  }
+
+  private renderFog(): void {
+    this.fogGfx.clear();
+    for (let y = 0; y < this.mapH; y++) {
+      for (let x = 0; x < this.mapW; x++) {
+        const vis = this.fog.getVisibility(x, y);
+        if (vis === Visibility.UNSEEN) {
+          this.fogGfx.fillStyle(0x000000, 1.0);
+          this.fogGfx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        } else if (vis === Visibility.EXPLORED) {
+          this.fogGfx.fillStyle(0x000000, 0.55);
+          this.fogGfx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+        // VISIBLE tiles have no overlay
+      }
+    }
+  }
+
+  private updateNpcVisibility(): void {
+    for (const npc of this.npcs) {
+      npc.setVisible(this.fog.getVisibility(npc.gridX, npc.gridY) === Visibility.VISIBLE);
+    }
+  }
 
   saveRun(): void {
     const inv = this.inventory.serialize();
