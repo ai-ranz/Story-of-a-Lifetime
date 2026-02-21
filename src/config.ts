@@ -5,15 +5,15 @@ export const GAME_HEIGHT = 500;
 export const TILE_SIZE = 16;
 
 // Map viewport (left portion of screen)
-export const MAP_WIDTH = 560;
+export const MAP_WIDTH = 400;
 export const MAP_HEIGHT = GAME_HEIGHT;
 
 // Side panel (right portion of screen)
 export const PANEL_X = MAP_WIDTH;
-export const PANEL_WIDTH = GAME_WIDTH - MAP_WIDTH; // 240
+export const PANEL_WIDTH = GAME_WIDTH - MAP_WIDTH; // 400
 export const PANEL_HEIGHT = GAME_HEIGHT;
 
-export const TILES_X = Math.floor(MAP_WIDTH / TILE_SIZE);   // 35
+export const TILES_X = Math.floor(MAP_WIDTH / TILE_SIZE);   // 25
 export const TILES_Y = Math.floor(MAP_HEIGHT / TILE_SIZE);   // 31
 
 export const MOVE_DURATION = 120; // ms per tile movement tween
