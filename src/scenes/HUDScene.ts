@@ -12,12 +12,12 @@ import dialogData from '../data/dialogs/village.json';
 
 type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory' | 'shop';
 
-const PAD = 6;
-const TOP_H = 22;      // top stats bar height
-const BTN_H = 24;      // bottom toolbar height
+const PAD = 8;
+const TOP_H = 26;      // top stats bar height
+const BTN_H = 28;      // bottom toolbar height
 const LOG_MAX = 5;      // max visible log messages
-const LOG_LINE_H = 14;  // log line height
-const ACTION_H = 140;   // expanded action area (combat/dialog)
+const LOG_LINE_H = 18;  // log line height
+const ACTION_H = 180;   // expanded action area (combat/dialog)
 
 const COL = {
   text: 0xdddddd, dim: 0x999999, hp: 0x44cc44, mp: 0x4488ff,
@@ -61,10 +61,13 @@ export class HUDScene extends Phaser.Scene {
   private worldScene!: WorldScene;
   private virtualPad?: VirtualPad;
 
+  private isTouch = false;
+
   constructor() { super({ key: 'HUDScene' }); }
   init(data: { worldScene: WorldScene }) { this.worldScene = data.worldScene; }
 
   create(): void {
+    this.isTouch = this.worldScene.inputManager?.isTouchDevice ?? false;
     // HUD camera covers full screen, no scroll
     this.cameras.main.setViewport(0, 0, GAME_WIDTH, GAME_HEIGHT);
     this.combat.setEventCallback((e, d) => this.onCombatEvent(e, d));
@@ -73,10 +76,16 @@ export class HUDScene extends Phaser.Scene {
     this.renderBottomBar();
 
     // Create virtual pad for touch devices
-    if (this.worldScene.inputManager?.isTouchDevice) {
+    if (this.isTouch) {
       this.virtualPad = new VirtualPad(this, this.worldScene.inputManager);
+      this.virtualPad.onInventory = () => {
+        if (this.mode === 'idle') this.showInventory();
+      };
     }
   }
+
+  /** Responsive font size — bigger on touch devices */
+  private fs(base: number): number { return this.isTouch ? base + 3 : base; }
 
   // ══════════════════════════════════════
   //  PUBLIC API (same contract as old SidePanelScene)
@@ -143,7 +152,7 @@ export class HUDScene extends Phaser.Scene {
     const cy = TOP_H / 2;
 
     // Name + Level
-    const name = this.mkText(x, cy, `${char.name} Lv${char.level}`, COL.title, 9);
+    const name = this.mkText(x, cy, `${char.name} Lv${char.level}`, COL.title, this.fs(9));
     this.statsObjs.push(name); x += name.width + 8;
 
     // HP bar
@@ -156,17 +165,17 @@ export class HUDScene extends Phaser.Scene {
     // Stats
     const stats = this.mkText(x, cy,
       `ATK${run.stats.attack} DEF${run.stats.defense} SPD${run.stats.speed} MAG${run.stats.magic}`,
-      COL.dim, 8);
+      COL.dim, this.fs(8));
     this.statsObjs.push(stats);
 
     // Gold (right-aligned)
-    const goldTxt = this.mkText(0, cy, `${run.gold ?? 0}g`, COL.gold, 9);
+    const goldTxt = this.mkText(0, cy, `${run.gold ?? 0}g`, COL.gold, this.fs(9));
     goldTxt.setX(GAME_WIDTH - PAD - goldTxt.width);
     this.statsObjs.push(goldTxt);
 
     // Floor indicator
     if (run.dungeonFloor > 0) {
-      const floorTxt = this.mkText(0, cy, `F${run.dungeonFloor}`, COL.dim, 8);
+      const floorTxt = this.mkText(0, cy, `F${run.dungeonFloor}`, COL.dim, this.fs(8));
       floorTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - floorTxt.width);
       this.statsObjs.push(floorTxt);
     }
@@ -199,7 +208,7 @@ export class HUDScene extends Phaser.Scene {
     const y = baseY - this.logFloats.length * LOG_LINE_H;
 
     const txt = this.add.text(GAME_WIDTH / 2, y, text, {
-      fontSize: '9px', color: Phaser.Display.Color.ValueToColor(hexStr(color)).rgba,
+      fontSize: `${this.fs(10)}px`, color: Phaser.Display.Color.ValueToColor(hexStr(color)).rgba,
       fontFamily: 'monospace', align: 'center',
     }).setDepth(20).setOrigin(0.5, 1);
 
@@ -264,14 +273,19 @@ export class HUDScene extends Phaser.Scene {
 
     // Buttons
     let bx = PAD;
-    bx = this.addButton(bx, y + 4, '[I] Inventory', COL.title, () => this.showInventory());
-    bx = this.addButton(bx + 10, y + 4, '[Space] Interact', COL.dim, () => {});
+    bx = this.addButton(bx, y + 4, 'Inventory', COL.title, () => this.showInventory());
+    bx = this.addButton(bx + 12, y + 4, 'Interact', COL.dim, () => {
+      // Trigger interact from touch
+      if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(true);
+      this.time.delayedCall(50, () => { if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(false); });
+    });
   }
 
   private addButton(x: number, y: number, label: string, color: number, cb: () => void): number {
-    const t = this.mkText(x, y + 8, label, color, 9);
+    const sz = this.fs(10);
+    const t = this.mkText(x, y + 8, label, color, sz);
     this.actionObjs.push(t);
-    const z = this.add.zone(x + t.width / 2, y + 8, t.width + 4, BTN_H - 4)
+    const z = this.add.zone(x + t.width / 2, y + 8, t.width + 8, BTN_H)
       .setDepth(25).setInteractive({ useHandCursor: true });
     z.on('pointerdown', cb);
     this.clickZones.push(z);
@@ -293,7 +307,7 @@ export class HUDScene extends Phaser.Scene {
     this.actionObjs.push(bg);
 
     let y = areaTop + PAD;
-    const speaker = this.mkText(PAD, y, `[${node.speaker}]`, COL.title, 10);
+    const speaker = this.mkText(PAD, y, `[${node.speaker}]`, COL.title, this.fs(10));
     this.actionObjs.push(speaker);
     y += speaker.height + 4;
 
@@ -301,7 +315,7 @@ export class HUDScene extends Phaser.Scene {
     this.displayedChars = 0;
     this.dialogChoicesRendered = false;
     this.dialogTextObj = this.add.text(PAD, y, '', {
-      fontSize: '10px', color: '#dddddd', fontFamily: 'monospace',
+      fontSize: `${this.fs(10)}px`, color: '#dddddd', fontFamily: 'monospace',
       wordWrap: { width: GAME_WIDTH - PAD * 2, useAdvancedWrap: true },
     }).setDepth(16);
     this.actionObjs.push(this.dialogTextObj);
@@ -342,16 +356,19 @@ export class HUDScene extends Phaser.Scene {
 
     if (node.choices?.length) {
       for (let i = 0; i < node.choices.length; i++) {
-        const t = this.mkText(PAD + 4, y, `> ${node.choices[i].text}`, COL.title, 9);
+        const t = this.mkText(PAD + 4, y, `> ${node.choices[i].text}`, COL.title, this.fs(10));
         this.actionObjs.push(t);
         const idx = i;
-        this.addZone(y - 1, t.height + 2, () => this.dialogChoose(idx));
-        y += t.height + 3;
+        const choiceH = Math.max(t.height + 6, 28);
+        this.addZone(y - 2, choiceH, () => this.dialogChoose(idx));
+        y += choiceH;
       }
     } else {
-      const t = this.mkText(PAD + 4, y, '[Click to continue]', COL.dim, 9);
+      const t = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
       this.actionObjs.push(t);
-      this.addZone(y - 1, t.height + 2, () => this.dialogAdvance());
+      // Make the entire remaining action area tappable
+      const areaTop = GAME_HEIGHT - ACTION_H;
+      this.addZone(areaTop, ACTION_H, () => this.dialogAdvance());
     }
   }
 
@@ -431,8 +448,8 @@ export class HUDScene extends Phaser.Scene {
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
-      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
-      this.actionObjs.push(t); y += 16;
+      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, this.fs(9));
+      this.actionObjs.push(t); y += this.fs(9) + 8;
     }
     y += 4;
 
@@ -457,20 +474,21 @@ export class HUDScene extends Phaser.Scene {
     // Render as two-column layout
     const colW = (GAME_WIDTH - PAD * 2) / 2;
     let col = 0;
-    const startY = y;
+    const btnFontSize = this.fs(10);
+    const btnRowH = Math.max(btnFontSize + 8, 26);
     for (const a of actions) {
       const ax = PAD + (col * colW) + 4;
-      const t = this.mkText(ax, y, `> ${a.label}`, COL.title, 9);
+      const t = this.mkText(ax, y, `> ${a.label}`, COL.title, btnFontSize);
       this.actionObjs.push(t);
       const act = a.action;
       // Use column-scoped zones so two-column buttons don't overlap
       const zx = PAD + col * colW + colW / 2;
-      const z = this.add.zone(zx, y + t.height / 2 - 1, colW, t.height + 2)
+      const z = this.add.zone(zx, y + t.height / 2 - 1, colW, btnRowH)
         .setDepth(35).setInteractive({ useHandCursor: true });
       z.on('pointerdown', () => this.submitCombatAction(act));
       this.clickZones.push(z);
       col++;
-      if (col >= 2) { col = 0; y += t.height + 3; }
+      if (col >= 2) { col = 0; y += btnRowH; }
     }
   }
 
@@ -512,13 +530,14 @@ export class HUDScene extends Phaser.Scene {
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
-      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
-      this.actionObjs.push(t); y += 16;
+      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, this.fs(9));
+      this.actionObjs.push(t); y += this.fs(9) + 8;
     }
     y += 6;
-    const tc = this.mkText(PAD + 4, y, '[Click to continue]', COL.dim, 9);
+    const tc = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
     this.actionObjs.push(tc);
-    this.addZone(y - 1, tc.height + 4, () => this.combat.advanceFromAnimate());
+    // Make entire action area tappable
+    this.addZone(areaTop, ACTION_H, () => this.combat.advanceFromAnimate());
   }
 
   private onCombatVictory(rewards: any): void {
@@ -547,9 +566,9 @@ export class HUDScene extends Phaser.Scene {
     this.actionObjs.push(bg);
 
     let y = areaTop + PAD;
-    const t1 = this.mkText(GAME_WIDTH / 2, y, 'You have fallen...', COL.dmg, 12);
+    const t1 = this.mkText(GAME_WIDTH / 2, y, 'You have fallen...', COL.dmg, this.fs(13));
     t1.setOrigin(0.5, 0); this.actionObjs.push(t1); y += t1.height + 8;
-    const t2 = this.mkText(GAME_WIDTH / 2, y, '[Click to continue]', COL.dim, 9);
+    const t2 = this.mkText(GAME_WIDTH / 2, y, '[Tap to continue]', COL.dim, this.fs(10));
     t2.setOrigin(0.5, 0); this.actionObjs.push(t2);
     this.addZone(areaTop, ACTION_H, () => { this.mode = 'idle'; this.worldScene.onCombatDefeat(); });
   }
@@ -584,51 +603,56 @@ export class HUDScene extends Phaser.Scene {
     let y = py + PAD;
     const push = (t: Phaser.GameObjects.GameObject) => { this.actionObjs.push(t); };
 
-    const t0 = this.invText(px + PAD, y, '--- INVENTORY ---', COL.title, 11);
+    const szTitle = this.fs(12);
+    const szBody = this.fs(10);
+    const szClose = this.fs(11);
+    const rowH = Math.max(szBody + 8, 22);
+
+    const t0 = this.invText(px + PAD, y, '--- INVENTORY ---', COL.title, szTitle);
     push(t0); y += t0.height + 6;
 
-    const te = this.invText(px + PAD, y, 'Equipment:', COL.dim, 9);
+    const te = this.invText(px + PAD, y, 'Equipment:', COL.dim, szBody);
     push(te); y += te.height + 2;
     for (const slot of ['weapon', 'armor', 'accessory'] as const) {
       const id = inv.equipment[slot];
       const name = id ? ((itemsData as any)[id]?.name ?? id) : '(empty)';
-      const t = this.invText(px + PAD + 4, y, `${slot}: ${name}`, id ? COL.text : COL.dim, 9);
+      const t = this.invText(px + PAD + 4, y, `${slot}: ${name}`, id ? COL.text : COL.dim, szBody);
       push(t);
       if (id) {
         const s = slot;
-        this.addZone(y, t.height, () => { inv.unequip(s); this.renderInventory(); });
+        this.addZone(y, rowH, () => { inv.unequip(s); this.renderInventory(); });
       }
-      y += t.height + 2;
+      y += rowH;
     }
     y += 6;
-    const tg = this.invText(px + PAD, y, `Gold: ${inv.gold}`, COL.gold, 9);
+    const tg = this.invText(px + PAD, y, `Gold: ${inv.gold}`, COL.gold, szBody);
     push(tg); y += tg.height + 6;
-    const ti = this.invText(px + PAD, y, 'Items:', COL.dim, 9);
+    const ti = this.invText(px + PAD, y, 'Items:', COL.dim, szBody);
     push(ti); y += ti.height + 2;
 
     if (inv.items.length === 0) {
-      const t = this.invText(px + PAD + 4, y, '(empty)', COL.dim, 9);
+      const t = this.invText(px + PAD + 4, y, '(empty)', COL.dim, szBody);
       push(t); y += t.height + 2;
     } else {
       for (const slot of inv.items) {
         const item = (itemsData as any)[slot.itemId];
         const name = item?.name ?? slot.itemId;
-        const t = this.invText(px + PAD + 4, y, `${name} x${slot.quantity}`, COL.text, 9);
+        const t = this.invText(px + PAD + 4, y, `${name} x${slot.quantity}`, COL.text, szBody);
         push(t);
         if (item?.type === 'equipment') {
           const id = slot.itemId;
-          this.addZone(y, t.height, () => { inv.equip(id); this.renderInventory(); });
+          this.addZone(y, rowH, () => { inv.equip(id); this.renderInventory(); });
         } else if (item?.type === 'consumable') {
           const id = slot.itemId;
-          this.addZone(y, t.height, () => this.useConsumable(id));
+          this.addZone(y, rowH, () => this.useConsumable(id));
         }
-        y += t.height + 2;
+        y += rowH;
       }
     }
     y += 8;
-    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, 10);
+    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, szClose);
     tc.setOrigin(0.5, 0); push(tc);
-    this.addZone(y, tc.height + 4, () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+    this.addZone(y, Math.max(tc.height + 8, 32), () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
   }
 
   private useConsumable(itemId: string): void {
@@ -676,14 +700,19 @@ export class HUDScene extends Phaser.Scene {
     let y = py + PAD;
     const push = (t: Phaser.GameObjects.GameObject) => { this.actionObjs.push(t); };
 
-    const t0 = this.invText(px + PAD, y, "--- BRYNN'S SHOP ---", COL.title, 11);
+    const szTitle = this.fs(12);
+    const szBody = this.fs(10);
+    const szClose = this.fs(11);
+    const shopRowH = Math.max(szBody + 8, 22);
+
+    const t0 = this.invText(px + PAD, y, "--- BRYNN'S SHOP ---", COL.title, szTitle);
     push(t0); y += t0.height + 4;
 
-    const tg = this.invText(px + PAD, y, `Your Gold: ${inv.gold}`, COL.gold, 9);
+    const tg = this.invText(px + PAD, y, `Your Gold: ${inv.gold}`, COL.gold, szBody);
     push(tg); y += tg.height + 6;
 
     // Buy section
-    const tb = this.invText(px + PAD, y, 'Buy:', COL.dim, 9);
+    const tb = this.invText(px + PAD, y, 'Buy:', COL.dim, szBody);
     push(tb); y += tb.height + 2;
 
     for (const itemId of HUDScene.SHOP_STOCK) {
@@ -692,26 +721,26 @@ export class HUDScene extends Phaser.Scene {
       const price = item.value ?? 0;
       const canAfford = inv.gold >= price;
       const label = `${item.name} - ${price}g`;
-      const t = this.invText(px + PAD + 4, y, label, canAfford ? COL.text : COL.dim, 9);
+      const t = this.invText(px + PAD + 4, y, label, canAfford ? COL.text : COL.dim, szBody);
       push(t);
 
       if (canAfford && price > 0) {
         const id = itemId;
-        const zone = this.add.zone(px + panelW / 2, y + t.height / 2, panelW - PAD * 2, t.height + 2)
+        const zone = this.add.zone(px + panelW / 2, y + shopRowH / 2, panelW - PAD * 2, shopRowH)
           .setDepth(35).setInteractive({ useHandCursor: true });
         zone.on('pointerdown', () => this.buyItem(id, price));
         this.clickZones.push(zone);
       }
-      y += t.height + 2;
+      y += shopRowH;
     }
     y += 6;
 
     // Sell section
-    const ts = this.invText(px + PAD, y, 'Sell:', COL.dim, 9);
+    const ts = this.invText(px + PAD, y, 'Sell:', COL.dim, szBody);
     push(ts); y += ts.height + 2;
 
     if (inv.items.length === 0) {
-      const t = this.invText(px + PAD + 4, y, '(nothing to sell)', COL.dim, 9);
+      const t = this.invText(px + PAD + 4, y, '(nothing to sell)', COL.dim, szBody);
       push(t); y += t.height + 2;
     } else {
       for (const slot of inv.items) {
@@ -719,21 +748,21 @@ export class HUDScene extends Phaser.Scene {
         if (!item || item.type === 'key_item') continue;
         const sellPrice = Math.max(1, Math.floor((item.value ?? 0) / 2));
         const label = `${item.name} x${slot.quantity} → ${sellPrice}g`;
-        const t = this.invText(px + PAD + 4, y, label, COL.text, 9);
+        const t = this.invText(px + PAD + 4, y, label, COL.text, szBody);
         push(t);
         const id = slot.itemId;
-        const zone = this.add.zone(px + panelW / 2, y + t.height / 2, panelW - PAD * 2, t.height + 2)
+        const zone = this.add.zone(px + panelW / 2, y + shopRowH / 2, panelW - PAD * 2, shopRowH)
           .setDepth(35).setInteractive({ useHandCursor: true });
         zone.on('pointerdown', () => this.sellItem(id, sellPrice));
         this.clickZones.push(zone);
-        y += t.height + 2;
+        y += shopRowH;
       }
     }
     y += 8;
 
-    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, 10);
+    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, szClose);
     tc.setOrigin(0.5, 0); push(tc);
-    this.addZone(y, tc.height + 4, () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+    this.addZone(y, Math.max(tc.height + 8, 32), () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
   }
 
   private buyItem(itemId: string, price: number): void {

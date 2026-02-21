@@ -236,6 +236,29 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
 
+      // Clicked a map enemy? Walk to it (contact triggers combat via doMove)
+      const enemy = this.mapEnemies.find(e => e.gridX === gx && e.gridY === gy && e.visible);
+      if (enemy) {
+        // If already on the same tile, engage immediately
+        if (this.player.gridX === gx && this.player.gridY === gy) {
+          this.checkEnemyContact();
+          return;
+        }
+        // Path directly to the enemy's tile — doMove/checkEnemyContact handles combat
+        const path = this.findPath(this.player.gridX, this.player.gridY, gx, gy);
+        if (path.length > 0) {
+          this.movePath = path;
+        } else {
+          // Can't path directly, try walking to adjacent tile
+          const adj = this.findAdjacentWalkable(gx, gy);
+          if (adj) {
+            const altPath = this.findPath(this.player.gridX, this.player.gridY, adj.x, adj.y);
+            if (altPath.length > 0) this.movePath = [...altPath, { x: gx, y: gy }];
+          }
+        }
+        return;
+      }
+
       // Clicked walkable tile
       if (this.isTileWalkable(gx, gy)) {
         const path = this.findPath(this.player.gridX, this.player.gridY, gx, gy);
