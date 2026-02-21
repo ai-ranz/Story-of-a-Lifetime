@@ -2,7 +2,7 @@
   "name": "Story of a Lifetime",
   "short_name": "SoaL",
   "description": "A retro rogue-like RPG adventure",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "fullscreen",
   "orientation": "landscape",
   "background_color": "#000000",
