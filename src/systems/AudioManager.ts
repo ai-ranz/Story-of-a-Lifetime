@@ -286,6 +286,169 @@ export class AudioManager {
     this.playTone(440, 'square', 0.08, 0.06, 0.16);
   }
 
+  // ── Elemental / Ability SFX ──
+
+  /** Ice shard — crystalline whoosh with high shimmer. */
+  playIce(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    // whoosh: rising sine
+    const w = this.ctx.createOscillator();
+    const wg = this.ctx.createGain();
+    w.type = 'sine';
+    w.frequency.setValueAtTime(300, t);
+    w.frequency.exponentialRampToValueAtTime(1200, t + 0.12);
+    wg.gain.setValueAtTime(0.15, t);
+    wg.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    w.connect(wg).connect(this.sfxGain);
+    w.start(t); w.stop(t + 0.18);
+    // shimmer: high tinkle
+    this.playTone(1800, 'sine', 0.1, 0.15, 0.06);
+    this.playTone(2200, 'sine', 0.08, 0.12, 0.1);
+    this.playTone(1600, 'sine', 0.06, 0.1, 0.15);
+  }
+
+  /** Thunder — low rumble into sharp crack. */
+  playThunder(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    // rumble
+    const r = this.ctx.createOscillator();
+    const rg = this.ctx.createGain();
+    r.type = 'sawtooth';
+    r.frequency.setValueAtTime(60, t);
+    r.frequency.linearRampToValueAtTime(40, t + 0.2);
+    rg.gain.setValueAtTime(0.2, t);
+    rg.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    r.connect(rg).connect(this.sfxGain);
+    r.start(t); r.stop(t + 0.25);
+    // crack
+    const c = this.ctx.createOscillator();
+    const cg = this.ctx.createGain();
+    c.type = 'square';
+    c.frequency.setValueAtTime(800, t + 0.08);
+    c.frequency.exponentialRampToValueAtTime(100, t + 0.22);
+    cg.gain.setValueAtTime(0.3, t + 0.08);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    c.connect(cg).connect(this.sfxGain);
+    c.start(t + 0.08); c.stop(t + 0.22);
+  }
+
+  /** Fire bolt — crackling burst. */
+  playFire(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(500, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+    g.gain.setValueAtTime(0.2, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(g).connect(this.sfxGain);
+    o.start(t); o.stop(t + 0.2);
+    // crackle overlay
+    this.playTone(1200, 'square', 0.08, 0.04, 0.02);
+    this.playTone(900, 'square', 0.06, 0.04, 0.06);
+    this.playTone(1400, 'square', 0.05, 0.03, 0.1);
+  }
+
+  /** Shield bash — metallic clang. */
+  playShieldBash(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    // metallic impact: two detuned square waves
+    for (const freq of [320, 340]) {
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.25, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      o.connect(g).connect(this.sfxGain);
+      o.start(t); o.stop(t + 0.2);
+    }
+    // high ring
+    this.playTone(1100, 'sine', 0.12, 0.25);
+  }
+
+  /** Backstab — quick sharp slice. */
+  playBackstab(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(800, t);
+    o.frequency.exponentialRampToValueAtTime(200, t + 0.08);
+    g.gain.setValueAtTime(0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    o.connect(g).connect(this.sfxGain);
+    o.start(t); o.stop(t + 0.1);
+  }
+
+  /** Bomb explosion — deep boom with noise. */
+  playExplosion(): void {
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    // deep boom
+    const o = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    o.connect(g).connect(this.sfxGain);
+    o.start(t); o.stop(t + 0.4);
+    // noise burst overlay
+    const n = this.ctx.createOscillator();
+    const ng = this.ctx.createGain();
+    n.type = 'sawtooth';
+    n.frequency.setValueAtTime(200, t);
+    n.frequency.exponentialRampToValueAtTime(40, t + 0.25);
+    ng.gain.setValueAtTime(0.2, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    n.connect(ng).connect(this.sfxGain);
+    n.start(t); n.stop(t + 0.25);
+  }
+
+  // ── Status Effect SFX ──
+
+  /** Poison tick — bubbly gurgle. */
+  playPoisonTick(): void {
+    const base = 180;
+    for (let i = 0; i < 3; i++) {
+      this.playTone(base + Math.random() * 80, 'sine', 0.1, 0.08, i * 0.06);
+    }
+  }
+
+  /** Burn tick — quick crackle. */
+  playBurnTick(): void {
+    this.playTone(600, 'sawtooth', 0.1, 0.06, 0);
+    this.playTone(900, 'square', 0.06, 0.04, 0.04);
+  }
+
+  /** Freeze applied — crystalline chime. */
+  playFreeze(): void {
+    this.playTone(1400, 'sine', 0.12, 0.15, 0);
+    this.playTone(1800, 'sine', 0.1, 0.12, 0.05);
+    this.playTone(2400, 'sine', 0.08, 0.1, 0.1);
+  }
+
+  /** Stun applied — sharp impact ring. */
+  playStun(): void {
+    this.playTone(300, 'square', 0.2, 0.1, 0);
+    this.playTone(600, 'sine', 0.1, 0.2, 0.03);
+  }
+
+  /** Status cured (antidote) — cleansing ascending tone. */
+  playStatusCure(): void {
+    this.playTone(440, 'sine', 0.12, 0.1, 0);
+    this.playTone(660, 'sine', 0.12, 0.1, 0.08);
+    this.playTone(880, 'sine', 0.15, 0.12, 0.16);
+  }
+
   // ═══════════════════════════════════════
   //  PROCEDURAL MUSIC — Medieval/Classical
   // ═══════════════════════════════════════

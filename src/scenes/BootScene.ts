@@ -90,8 +90,13 @@ export class BootScene extends Phaser.Scene {
       ['npc_friend', 0x33cccc],
       ['enemy_wolf', 0x888888],
       ['enemy_boar', 0x885522],
+      ['enemy_bat', 0x554466],
+      ['enemy_slime', 0x44cc88],
+      ['enemy_spider', 0x663344],
+      ['enemy_skeleton', 0xccccaa],
       ['enemy_goblin', 0x44aa44],
       ['enemy_goblin_archer', 0x44cc66],
+      ['enemy_shaman', 0x884488],
       ['enemy_goblin_chief', 0x227722],
     ];
     for (const [key, color] of chars) {

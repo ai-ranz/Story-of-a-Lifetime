@@ -17,6 +17,7 @@ import encountersData from '../data/encounters.json';
 import chapter1Data from '../data/chapters/chapter1.json';
 import classesData from '../data/classes.json';
 import enemiesData from '../data/enemies.json';
+import dialogData from '../data/dialogs/village.json';
 
 // Tile indices matching the tileset spritesheet order from BootScene
 const T = {
@@ -391,6 +392,10 @@ export class WorldScene extends Phaser.Scene {
     this.movePath = [];
     if (!this.run.defeatedEnemies) this.run.defeatedEnemies = {};
 
+    // Set story flags for quest-reactive dialogs
+    if (mapId === 'forest') this.quests.setStoryFlag('entered_forest');
+    if (mapId.startsWith('cave_')) this.quests.setStoryFlag('entered_cave');
+
     const chapterMap = chapter1Data.maps.find(m => m.id === mapId);
     if (chapterMap?.type === 'procedural') this.loadProcedural(mapId, chapterMap, startX, startY);
     else this.loadStatic(mapId, startX, startY);
@@ -480,6 +485,15 @@ export class WorldScene extends Phaser.Scene {
     this.tilemap = this.make.tilemap({ data: tiles, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: w, height: h });
     const ts = this.tilemap.addTilesetImage('tiles', 'tileset', TILE_SIZE, TILE_SIZE)!;
     this.tileLayer = this.tilemap.createLayer(0, ts, 0, 0)!;
+  }
+
+  /** Returns minimap data for HUDScene rendering */
+  getMinimapData(): { w: number; h: number; tiles: number[][]; fog: FogOfWar; px: number; py: number } | null {
+    if (!this.currentTiles.length || !this.fog || !this.player) return null;
+    return {
+      w: this.mapW, h: this.mapH, tiles: this.currentTiles,
+      fog: this.fog, px: this.player.gridX, py: this.player.gridY,
+    };
   }
 
   // ====== Movement ======
@@ -602,7 +616,31 @@ export class WorldScene extends Phaser.Scene {
 
   // ====== Interaction ======
 
-  interactWith(npc: NPC): void { this.panel()?.startDialog(npc.dialogId); }
+  interactWith(npc: NPC): void {
+    const dialogId = this.getReactiveDialogId(npc);
+    this.panel()?.startDialog(dialogId);
+  }
+
+  private getReactiveDialogId(npc: NPC): string {
+    const base = npc.dialogId;
+    const bossDefeated = this.quests.getQuestFlag('boss_defeated');
+    const enteredCave = this.quests.getStoryFlag('entered_cave');
+    const enteredForest = this.quests.getStoryFlag('entered_forest');
+    // Check for quest-state specific dialogs (most progressed first)
+    if (bossDefeated) {
+      const heroId = base + '_hero';
+      if ((dialogData as any)[heroId]) return heroId;
+    }
+    if (enteredCave) {
+      const caveId = base + '_cave';
+      if ((dialogData as any)[caveId]) return caveId;
+    }
+    if (enteredForest) {
+      const forestId = base + '_forest';
+      if ((dialogData as any)[forestId]) return forestId;
+    }
+    return base;
+  }
 
   private tryInteract(): void {
     const fx = this.player.gridX + this.player.facing.x;
@@ -729,8 +767,44 @@ export class WorldScene extends Phaser.Scene {
       AudioManager.getInstance().playLevelUp();
     }
 
+    // Check for level-up
+    this.checkLevelUp();
+
     SaveSystem.saveCharacter(this.character);
     this.saveRun();
+  }
+
+  /** XP required to reach a given level. Formula: 40 * level * (level + 1) / 2 */
+  static xpForLevel(level: number): number {
+    return 40 * level * (level + 1) / 2;
+  }
+
+  private checkLevelUp(): void {
+    const cd = (classesData as any)[this.character.class];
+    if (!cd) return;
+    let leveled = false;
+    while (this.character.xp >= WorldScene.xpForLevel(this.character.level + 1)) {
+      this.character.level++;
+      leveled = true;
+
+      // Apply growth stats
+      const g = cd.growth;
+      this.run.maxHp += g.hp;
+      this.run.maxMp += g.mp;
+      this.run.stats.attack += g.attack;
+      this.run.stats.defense += g.defense;
+      this.run.stats.speed += g.speed;
+      this.run.stats.magic += g.magic;
+
+      // Full heal on level up
+      this.run.hp = this.run.maxHp;
+      this.run.mp = this.run.maxMp;
+
+      this.panel()?.addMessage(`Level Up! Now level ${this.character.level}!`, '#ffcc44');
+      this.panel()?.showLevelUpBanner(this.character.level);
+      AudioManager.getInstance().playLevelUp();
+    }
+    if (leveled) this.panel()?.refreshStats();
   }
 
   onCombatDefeat(): void {

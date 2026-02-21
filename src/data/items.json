@@ -19,6 +19,26 @@
     "description": "Restores 15 MP.",
     "value": 20
   },
+  "antidote": {
+    "name": "Antidote",
+    "type": "consumable",
+    "spriteKey": "item_potion_green",
+    "effects": [{ "type": "cure_status", "status": "poison" }],
+    "stackable": true,
+    "maxStack": 10,
+    "description": "Cures poison.",
+    "value": 12
+  },
+  "bomb": {
+    "name": "Bomb",
+    "type": "consumable",
+    "spriteKey": "item_bomb",
+    "effects": [{ "type": "damage", "value": 30 }],
+    "stackable": true,
+    "maxStack": 5,
+    "description": "Deals 30 damage to one enemy.",
+    "value": 25
+  },
   "wooden_sword": {
     "name": "Wooden Sword",
     "type": "equipment",
@@ -41,6 +61,39 @@
     "description": "A sturdy iron short sword. +6 Attack. Teaches Power Strike.",
     "value": 50
   },
+  "iron_sword": {
+    "name": "Iron Sword",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_sword_iron",
+    "statModifiers": { "attack": 9 },
+    "teachesSkill": "shield_bash",
+    "masteryRequired": 8,
+    "description": "A heavy iron sword. +9 Attack. Teaches Shield Bash.",
+    "value": 80
+  },
+  "frost_wand": {
+    "name": "Frost Wand",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_wand",
+    "statModifiers": { "magic": 7, "attack": 1 },
+    "teachesSkill": "ice_shard",
+    "masteryRequired": 6,
+    "description": "A wand of frost. +7 Magic, +1 Attack. Teaches Ice Shard.",
+    "value": 75
+  },
+  "shadow_dagger": {
+    "name": "Shadow Dagger",
+    "type": "equipment",
+    "slot": "weapon",
+    "spriteKey": "item_dagger",
+    "statModifiers": { "attack": 5, "speed": 4 },
+    "teachesSkill": "backstab",
+    "masteryRequired": 6,
+    "description": "A dark dagger. +5 Attack, +4 Speed. Teaches Backstab.",
+    "value": 70
+  },
   "apprentice_staff": {
     "name": "Apprentice Staff",
     "type": "equipment",
@@ -62,6 +115,39 @@
     "masteryRequired": 0,
     "description": "Basic leather armor. +4 Defense.",
     "value": 30
+  },
+  "chain_mail": {
+    "name": "Chain Mail",
+    "type": "equipment",
+    "slot": "armor",
+    "spriteKey": "item_armor_chain",
+    "statModifiers": { "defense": 8 },
+    "teachesSkill": null,
+    "masteryRequired": 0,
+    "description": "Linked metal rings. +8 Defense.",
+    "value": 65
+  },
+  "speed_ring": {
+    "name": "Speed Ring",
+    "type": "equipment",
+    "slot": "accessory",
+    "spriteKey": "item_ring",
+    "statModifiers": { "speed": 4 },
+    "teachesSkill": "quick_slash",
+    "masteryRequired": 4,
+    "description": "A ring that quickens reflexes. +4 Speed. Teaches Quick Slash.",
+    "value": 55
+  },
+  "magic_ring": {
+    "name": "Magic Ring",
+    "type": "equipment",
+    "slot": "accessory",
+    "spriteKey": "item_ring_magic",
+    "statModifiers": { "magic": 4, "mp": 10 },
+    "teachesSkill": null,
+    "masteryRequired": 0,
+    "description": "Amplifies magical power. +4 Magic, +10 MP.",
+    "value": 60
   },
   "herb": {
     "name": "Forest Herb",

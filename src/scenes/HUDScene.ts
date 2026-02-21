@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, TYPEWRITER_SPEED, LOG_FADE_MS } from '../config';
 import { CombatSystem, Combatant, CombatAction } from '../systems/CombatSystem';
 import { DialogSystem, DialogTree } from '../systems/DialogSystem';
+import { Visibility } from '../systems/FogOfWar';
 import { WorldScene } from './WorldScene';
 import { VirtualPad } from '../ui/VirtualPad';
 import { AudioManager } from '../systems/AudioManager';
@@ -47,6 +48,8 @@ export class HUDScene extends Phaser.Scene {
   private actionObjs: Phaser.GameObjects.GameObject[] = [];
   private clickZones: Phaser.GameObjects.Zone[] = [];
   private overlayBg?: Phaser.GameObjects.Rectangle;
+  private minimapGfx?: Phaser.GameObjects.Graphics;
+  private minimapVisible = true;
 
   // Persistent log for review
   private messageLog: { text: string; color: string }[] = [];
@@ -101,6 +104,22 @@ export class HUDScene extends Phaser.Scene {
     this.renderStats();
   }
 
+  showLevelUpBanner(level: number): void {
+    const banner = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, `LEVEL UP! Lv${level}`, {
+      fontSize: '24px', color: '#ffcc44', fontFamily: 'monospace', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 4,
+    }).setDepth(99).setOrigin(0.5).setAlpha(0);
+    this.tweens.add({
+      targets: banner, alpha: 1, y: GAME_HEIGHT / 2 - 60, duration: 400, ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: banner, alpha: 0, y: GAME_HEIGHT / 2 - 90, duration: 800, delay: 1200, ease: 'Power2',
+          onComplete: () => banner.destroy(),
+        });
+      },
+    });
+  }
+
   startDialog(dialogId: string): void {
     const tree = (dialogData as any)[dialogId] as DialogTree | undefined;
     if (!tree) { this.addMessage('(No dialog data)', '#ff6666'); return; }
@@ -112,18 +131,27 @@ export class HUDScene extends Phaser.Scene {
   startCombat(enemies: any[], isBoss: boolean): void {
     this.isBoss = isBoss;
     const run = this.worldScene.run, char = this.worldScene.character;
+    // Apply equipment stat modifiers to combat stats
+    const eqMods = this.worldScene.inventory.getEquipmentStatModifiers();
+    const combatStats = {
+      attack: run.stats.attack + (eqMods.attack ?? 0),
+      defense: run.stats.defense + (eqMods.defense ?? 0),
+      speed: run.stats.speed + (eqMods.speed ?? 0),
+      magic: run.stats.magic + (eqMods.magic ?? 0),
+    };
     const player: Combatant = {
       id: char.name, name: char.name, isPlayer: true,
       hp: run.hp, maxHp: run.maxHp, mp: run.mp, maxMp: run.maxMp,
-      stats: { ...run.stats }, skills: [...char.learnedSkills], buffs: [],
+      stats: combatStats, skills: [...char.learnedSkills], buffs: [], statusEffects: [],
     };
     const foes: Combatant[] = enemies.map((e: any, i: number) => ({
       id: e.id + '_' + i, name: e.name, isPlayer: false,
       hp: e.stats.hp, maxHp: e.stats.hp, mp: e.stats.mp ?? 0, maxMp: e.stats.mp ?? 0,
       stats: { attack: e.stats.attack, defense: e.stats.defense, speed: e.stats.speed, magic: e.stats.magic ?? 0 },
-      skills: e.skills ?? [], ai: e.ai, buffs: [],
+      skills: e.skills ?? [], ai: e.ai, buffs: [], statusEffects: [],
       loot: e.loot, xpReward: e.xpReward, goldReward: e.goldReward,
       spriteKey: e.spriteKey,
+      weakness: e.weakness, resistance: e.resistance,
     }));
     this.mode = 'combat';
     this.addMessage(`--- ${foes.map(f => f.name).join(', ')} appeared! ---`, '#ff8844');
@@ -162,9 +190,14 @@ export class HUDScene extends Phaser.Scene {
     x = this.drawBar(x, cy, 'MP', run.mp, run.maxMp, COL.mp, 60);
     x += 8;
 
-    // Stats
+    // Stats (with equipment bonuses reflected)
+    const eqMods = this.worldScene.inventory.getEquipmentStatModifiers();
+    const totalAtk = run.stats.attack + (eqMods.attack ?? 0);
+    const totalDef = run.stats.defense + (eqMods.defense ?? 0);
+    const totalSpd = run.stats.speed + (eqMods.speed ?? 0);
+    const totalMag = run.stats.magic + (eqMods.magic ?? 0);
     const stats = this.mkText(x, cy,
-      `ATK${run.stats.attack} DEF${run.stats.defense} SPD${run.stats.speed} MAG${run.stats.magic}`,
+      `ATK${totalAtk} DEF${totalDef} SPD${totalSpd} MAG${totalMag}`,
       COL.dim, this.fs(8));
     this.statsObjs.push(stats);
 
@@ -173,12 +206,64 @@ export class HUDScene extends Phaser.Scene {
     goldTxt.setX(GAME_WIDTH - PAD - goldTxt.width);
     this.statsObjs.push(goldTxt);
 
+    // XP progress (right of gold)
+    const nextLvlXp = WorldScene.xpForLevel(char.level + 1);
+    const xpTxt = this.mkText(0, cy, `XP:${char.xp}/${nextLvlXp}`, COL.dim, this.fs(8));
+    xpTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - xpTxt.width);
+    this.statsObjs.push(xpTxt);
+
     // Floor indicator
     if (run.dungeonFloor > 0) {
       const floorTxt = this.mkText(0, cy, `F${run.dungeonFloor}`, COL.dim, this.fs(8));
-      floorTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - floorTxt.width);
+      floorTxt.setX(GAME_WIDTH - PAD - goldTxt.width - 8 - xpTxt.width - 8 - floorTxt.width);
       this.statsObjs.push(floorTxt);
     }
+
+    // Minimap
+    if (this.minimapVisible && this.mode === 'idle') this.renderMinimap();
+  }
+
+  private renderMinimap(): void {
+    if (this.minimapGfx) this.minimapGfx.destroy();
+    const data = this.worldScene.getMinimapData();
+    if (!data) return;
+
+    const MAX_SIZE = 90;
+    const scale = Math.min(MAX_SIZE / data.w, MAX_SIZE / data.h, 2);
+    const mmW = Math.ceil(data.w * scale);
+    const mmH = Math.ceil(data.h * scale);
+    const ox = GAME_WIDTH - mmW - PAD;
+    const oy = TOP_H + PAD;
+
+    const g = this.add.graphics().setDepth(40);
+    // Background
+    g.fillStyle(0x000000, 0.6);
+    g.fillRect(ox - 2, oy - 2, mmW + 4, mmH + 4);
+
+    const MINI_COLORS: Record<number, number> = {
+      0: 0x4a8c3f, 1: 0xc8a96e, 2: 0x555555, 3: 0x8b7355, 4: 0x3366aa,
+      5: 0x2d6e1e, 6: 0x8b4513, 7: 0xcccc00, 8: 0x00cccc, 9: 0xdd8800,
+      10: 0x886644, 11: 0xaa3333, 12: 0x553311,
+    };
+
+    for (let y = 0; y < data.h; y++) {
+      for (let x = 0; x < data.w; x++) {
+        const vis = data.fog.getVisibility(x, y);
+        if (vis === Visibility.UNSEEN) continue;
+        const tile = data.tiles[y]?.[x] ?? 0;
+        const c = MINI_COLORS[tile] ?? 0x333333;
+        const alpha = vis === Visibility.VISIBLE ? 0.9 : 0.4;
+        g.fillStyle(c, alpha);
+        g.fillRect(ox + x * scale, oy + y * scale, Math.max(scale, 1), Math.max(scale, 1));
+      }
+    }
+
+    // Player dot
+    g.fillStyle(0xffffff, 1);
+    const ps = Math.max(scale + 1, 2);
+    g.fillRect(ox + data.px * scale - ps / 4, oy + data.py * scale - ps / 4, ps, ps);
+
+    this.minimapGfx = g;
   }
 
   private drawBar(x: number, cy: number, label: string, cur: number, max: number, color: number, barW: number): number {
@@ -278,6 +363,12 @@ export class HUDScene extends Phaser.Scene {
       // Trigger interact from touch
       if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(true);
       this.time.delayedCall(50, () => { if (this.worldScene.inputManager) this.worldScene.inputManager.setPadAction(false); });
+    });
+    bx = this.addButton(bx + 12, y + 4, 'Map', this.minimapVisible ? COL.title : COL.dim, () => {
+      this.minimapVisible = !this.minimapVisible;
+      if (!this.minimapVisible && this.minimapGfx) { this.minimapGfx.destroy(); this.minimapGfx = undefined; }
+      else this.renderStats();
+      this.renderBottomBar();
     });
 
     // Mute toggle (right-aligned)
@@ -461,7 +552,9 @@ export class HUDScene extends Phaser.Scene {
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
-      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, this.fs(9));
+      const statusStr = (e.statusEffects ?? []).map((s: any) => s.id[0].toUpperCase()).join('');
+      const statusSuffix = statusStr ? ` [${statusStr}]` : '';
+      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, this.fs(9));
       this.actionObjs.push(t); y += this.fs(9) + 8;
     }
     y += 4;
@@ -518,15 +611,49 @@ export class HUDScene extends Phaser.Scene {
       msg = result.skillName
         ? `${result.actor} uses ${result.skillName}! ${result.value} dmg to ${result.target}${result.critical ? ' CRIT!' : ''}`
         : `${result.actor} hits ${result.target} for ${result.value}${result.critical ? ' CRIT!' : ''}`;
-      color = '#ff6666';
-      if (result.critical) audio.playCriticalHit(); else audio.playAttackHit();
+      if (result.weaknessHit) msg += ' (Weakness!)';
+      if (result.resistanceHit) msg += ' (Resisted)';
+      color = result.weaknessHit ? '#ff9900' : '#ff6666';
+      // Play element/skill-specific SFX, else generic hit
+      if (result.element === 'fire') audio.playFire();
+      else if (result.element === 'ice') audio.playIce();
+      else if (result.element === 'lightning') audio.playThunder();
+      else if (result.skillName === 'Shield Bash') audio.playShieldBash();
+      else if (result.skillName === 'Backstab') audio.playBackstab();
+      else if (result.skillName === 'Bomb') audio.playExplosion();
+      else if (result.critical) audio.playCriticalHit();
+      else audio.playAttackHit();
+      this.cameras.main.shake(result.critical ? 150 : 60, result.critical ? 0.012 : 0.005);
+      this.showFloatingNumber(result.value, result.critical ? '#ffff00' : '#ff4444', result.critical);
+      if (result.appliedStatus) {
+        this.addMessage(`${result.target} is ${result.appliedStatus}!`, '#cc66ff');
+        if (result.appliedStatus === 'poison') audio.playPoisonTick();
+        else if (result.appliedStatus === 'burn') audio.playBurnTick();
+        else if (result.appliedStatus === 'freeze') audio.playFreeze();
+        else if (result.appliedStatus === 'stun') audio.playStun();
+      }
     } else if (result.type === 'heal') {
       msg = result.skillName ? `${result.skillName}: +${result.value} HP to ${result.target}` : `${result.target} heals ${result.value} HP`;
       color = '#66dd66';
-      audio.playHeal();
+      if (result.skillName === 'Antidote') audio.playStatusCure();
+      else audio.playHeal();
+      if (result.value > 0) this.showFloatingNumber(result.value, '#44ff44', false);
     } else if (result.type === 'buff') { msg = `${result.actor} uses ${result.skillName}!`; color = '#88aaff'; audio.playSelect(); }
     else if (result.type === 'miss') { msg = `${result.actor}'s attack missed!`; color = '#888888'; audio.playMiss(); }
     else if (result.type === 'flee_fail') { msg = 'Failed to escape!'; color = '#cc8844'; audio.playMiss(); }
+    else if (result.type === 'status_tick') {
+      msg = `${result.actor} takes ${result.value} ${result.skillName} damage!`;
+      color = '#cc66ff';
+      if (result.skillName === 'Poisoned') audio.playPoisonTick();
+      else if (result.skillName === 'Burning') audio.playBurnTick();
+      this.cameras.main.flash(100, 80, 30, 80, true);
+      if (result.value > 0) this.showFloatingNumber(result.value, '#cc66ff', false);
+    } else if (result.type === 'status_skip') {
+      msg = `${result.actor} is ${result.skillName}! Can't move!`;
+      color = '#8888cc';
+      if (result.skillName === 'Frozen') audio.playFreeze();
+      else if (result.skillName === 'Stunned') audio.playStun();
+    }
     this.addMessage(msg, color);
     this.renderStats();
 
@@ -543,7 +670,9 @@ export class HUDScene extends Phaser.Scene {
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
-      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, this.fs(9));
+      const statusStr = (e.statusEffects ?? []).map((s: any) => s.id[0].toUpperCase()).join('');
+      const statusSuffix = statusStr ? ` [${statusStr}]` : '';
+      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, this.fs(9));
       this.actionObjs.push(t); y += this.fs(9) + 8;
     }
     y += 6;
@@ -675,6 +804,10 @@ export class HUDScene extends Phaser.Scene {
     for (const eff of item.effects) {
       if (eff.type === 'heal') run.hp = Math.min(run.maxHp, run.hp + eff.value);
       else if (eff.type === 'restore_mp') run.mp = Math.min(run.maxMp, run.mp + eff.value);
+      else if (eff.type === 'damage') {
+        this.addMessage('Cannot use bombs outside combat!', '#ff6666');
+        return;
+      }
     }
     this.worldScene.inventory.removeItem(itemId);
     this.worldScene.saveRun();
@@ -688,8 +821,11 @@ export class HUDScene extends Phaser.Scene {
   // ══════════════════════════════════════
 
   private static readonly SHOP_STOCK = [
-    'health_potion', 'mana_potion', 'wooden_sword', 'short_sword',
-    'apprentice_staff', 'leather_armor', 'herb',
+    'health_potion', 'mana_potion', 'antidote', 'bomb', 'herb',
+    'wooden_sword', 'short_sword', 'iron_sword',
+    'apprentice_staff', 'frost_wand', 'shadow_dagger',
+    'leather_armor', 'chain_mail',
+    'speed_ring', 'magic_ring',
   ];
 
   private renderShop(): void {
@@ -830,6 +966,21 @@ export class HUDScene extends Phaser.Scene {
       color: Phaser.Display.Color.ValueToColor(color).rgba,
       fontFamily: 'monospace',
     }).setDepth(16).setOrigin(0, 0.5);
+  }
+
+  private showFloatingNumber(value: number, color: string, isCrit: boolean): void {
+    const size = isCrit ? 18 : 14;
+    const text = isCrit ? `${value}!` : `${value}`;
+    const cx = GAME_WIDTH / 2 + (Math.random() - 0.5) * 60;
+    const cy = GAME_HEIGHT - ACTION_H - 20;
+    const numText = this.add.text(cx, cy, text, {
+      fontSize: `${size}px`, color, fontFamily: 'monospace', fontStyle: isCrit ? 'bold' : 'normal',
+      stroke: '#000000', strokeThickness: 2,
+    }).setDepth(50).setOrigin(0.5);
+    this.tweens.add({
+      targets: numText, y: cy - 40, alpha: 0, duration: 900, ease: 'Power2',
+      onComplete: () => numText.destroy(),
+    });
   }
 
   private invText(x: number, y: number, str: string, color: number, size = 9): Phaser.GameObjects.Text {

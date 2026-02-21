@@ -24,6 +24,62 @@
     "xpReward": 15,
     "goldReward": 8
   },
+  "cave_bat": {
+    "name": "Cave Bat",
+    "spriteKey": "enemy_bat",
+    "stats": { "hp": 12, "mp": 0, "attack": 7, "defense": 2, "speed": 12, "magic": 0 },
+    "skills": [],
+    "ai": "aggressive",
+    "weakness": "fire",
+    "loot": [
+      { "itemId": "herb", "chance": 0.2 }
+    ],
+    "xpReward": 10,
+    "goldReward": 4
+  },
+  "slime": {
+    "name": "Slime",
+    "spriteKey": "enemy_slime",
+    "stats": { "hp": 25, "mp": 0, "attack": 5, "defense": 10, "speed": 3, "magic": 0 },
+    "skills": [],
+    "ai": "defensive",
+    "weakness": "fire",
+    "resistance": "ice",
+    "loot": [
+      { "itemId": "mana_potion", "chance": 0.15 }
+    ],
+    "xpReward": 14,
+    "goldReward": 6
+  },
+  "cave_spider": {
+    "name": "Cave Spider",
+    "spriteKey": "enemy_spider",
+    "stats": { "hp": 22, "mp": 5, "attack": 9, "defense": 4, "speed": 9, "magic": 3 },
+    "skills": ["poison_bite"],
+    "ai": "aggressive",
+    "weakness": "fire",
+    "loot": [
+      { "itemId": "antidote", "chance": 0.3 },
+      { "itemId": "health_potion", "chance": 0.1 }
+    ],
+    "xpReward": 18,
+    "goldReward": 10
+  },
+  "skeleton": {
+    "name": "Skeleton",
+    "spriteKey": "enemy_skeleton",
+    "stats": { "hp": 28, "mp": 0, "attack": 11, "defense": 8, "speed": 5, "magic": 0 },
+    "skills": [],
+    "ai": "aggressive",
+    "weakness": "fire",
+    "resistance": "dark",
+    "loot": [
+      { "itemId": "iron_sword", "chance": 0.05 },
+      { "itemId": "health_potion", "chance": 0.15 }
+    ],
+    "xpReward": 22,
+    "goldReward": 15
+  },
   "goblin": {
     "name": "Goblin",
     "spriteKey": "enemy_goblin",
@@ -49,18 +105,34 @@
     "xpReward": 20,
     "goldReward": 14
   },
+  "goblin_shaman": {
+    "name": "Goblin Shaman",
+    "spriteKey": "enemy_shaman",
+    "stats": { "hp": 22, "mp": 15, "attack": 6, "defense": 4, "speed": 5, "magic": 10 },
+    "skills": ["fire_bolt"],
+    "ai": "aggressive",
+    "resistance": "fire",
+    "weakness": "ice",
+    "loot": [
+      { "itemId": "mana_potion", "chance": 0.3 },
+      { "itemId": "apprentice_staff", "chance": 0.03 }
+    ],
+    "xpReward": 25,
+    "goldReward": 18
+  },
   "goblin_chief": {
     "name": "Goblin Chief",
     "spriteKey": "enemy_goblin_chief",
-    "stats": { "hp": 80, "mp": 10, "attack": 16, "defense": 10, "speed": 5, "magic": 5 },
-    "skills": ["power_strike"],
+    "stats": { "hp": 100, "mp": 15, "attack": 18, "defense": 12, "speed": 6, "magic": 6 },
+    "skills": ["power_strike", "shield_bash"],
     "ai": "aggressive",
     "loot": [
-      { "itemId": "short_sword", "chance": 0.5 },
-      { "itemId": "health_potion", "chance": 1.0 }
+      { "itemId": "iron_sword", "chance": 0.5 },
+      { "itemId": "health_potion", "chance": 1.0 },
+      { "itemId": "chain_mail", "chance": 0.3 }
     ],
-    "xpReward": 80,
-    "goldReward": 50,
+    "xpReward": 100,
+    "goldReward": 60,
     "boss": true
   }
 }

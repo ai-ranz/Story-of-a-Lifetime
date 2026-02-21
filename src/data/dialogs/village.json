@@ -32,6 +32,36 @@
       }
     }
   },
+  "elder_greetings_forest": {
+    "id": "elder_greetings_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "You've made it through the forest once. The creatures there grow bolder. Be sure to stock up before you venture into the cave.",
+        "next": null
+      }
+    }
+  },
+  "elder_greetings_cave": {
+    "id": "elder_greetings_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "You've been inside the caves... I can see it in your eyes. The goblin chief lurks on the lowest floor. Defeat him and our village will be safe.",
+        "next": null
+      }
+    }
+  },
+  "elder_greetings_hero": {
+    "id": "elder_greetings_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "You did it! The goblin chief is no more. The village owes you everything, hero. Rest well — you've earned it.",
+        "next": null
+      }
+    }
+  },
   "mother_farewell": {
     "id": "mother_farewell",
     "nodes": {
@@ -44,6 +74,37 @@
       "end": {
         "speaker": "Mother",
         "text": "Come home safe. I'll be waiting.",
+        "next": null
+      }
+    }
+  },
+  "mother_farewell_forest": {
+    "id": "mother_farewell_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Mother",
+        "text": "I heard the wolves howling last night. Please be careful in those woods, dear.",
+        "next": null
+      }
+    }
+  },
+  "mother_farewell_cave": {
+    "id": "mother_farewell_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Mother",
+        "text": "The caves? Oh my... just promise me you'll come back. Here, take this.",
+        "action": "giveItem:health_potion",
+        "next": null
+      }
+    }
+  },
+  "mother_farewell_hero": {
+    "id": "mother_farewell_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Mother",
+        "text": "My brave child... I'm so proud of you. Welcome home.",
         "next": null
       }
     }
@@ -62,6 +123,24 @@
       "shop": {
         "speaker": "Brynn",
         "text": "Take your time. Good gear keeps you alive!",
+        "next": null
+      }
+    }
+  },
+  "shopkeeper_intro_cave": {
+    "id": "shopkeeper_intro_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Brynn",
+        "text": "Back from the caves? You'll want better gear for the deeper floors. I've got some new stock.",
+        "choices": [
+          { "text": "Show me.", "next": "shop", "action": "openShop" },
+          { "text": "Not now.", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Brynn",
+        "text": "The chain mail is worth every coin if you're heading deeper.",
         "next": null
       }
     }
@@ -85,6 +164,36 @@
       "nervous": {
         "speaker": "Kael",
         "text": "Don't worry, you've always been the brave one. Besides, I heard the forest herbs can patch you up in a pinch!",
+        "next": null
+      }
+    }
+  },
+  "kael_encouragement_forest": {
+    "id": "kael_encouragement_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Kael",
+        "text": "You fought wolves AND boars?! That's amazing! Did you find anything cool out there?",
+        "next": null
+      }
+    }
+  },
+  "kael_encouragement_cave": {
+    "id": "kael_encouragement_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Kael",
+        "text": "Wait, you went into the CAVE? With the goblins?! You're insane! ...in a good way. Be careful down there!",
+        "next": null
+      }
+    }
+  },
+  "kael_encouragement_hero": {
+    "id": "kael_encouragement_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Kael",
+        "text": "You beat the goblin chief!! Everyone's talking about it! You're a legend! Can I tell everyone we're best friends?",
         "next": null
       }
     }
