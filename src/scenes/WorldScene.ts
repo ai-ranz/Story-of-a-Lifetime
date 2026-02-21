@@ -545,6 +545,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private checkEncounter(): void {
+    // No random encounters on maps with visible enemies
+    if (this.mapEnemies.length > 0) return;
     const cm = chapter1Data.maps.find(m => m.id === this.currentMapId);
     if (!cm || (cm as any).safeZone) return;
     const tid = (cm as any).encounterTable;
@@ -553,9 +555,7 @@ export class WorldScene extends Phaser.Scene {
     if (!table) return;
     this.stepsSinceEncounter++;
     if (this.stepsSinceEncounter < 5) return;
-    // Reduce random encounter rate when map has visible enemies
-    const rate = this.mapEnemies.length > 0 ? table.encounterRate * 0.3 : table.encounterRate;
-    if (rollFloat() < rate) {
+    if (rollFloat() < table.encounterRate) {
       this.stepsSinceEncounter = 0;
       this.startRandomCombat(table);
     }

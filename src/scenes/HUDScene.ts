@@ -463,7 +463,12 @@ export class HUDScene extends Phaser.Scene {
       const t = this.mkText(ax, y, `> ${a.label}`, COL.title, 9);
       this.actionObjs.push(t);
       const act = a.action;
-      this.addZone(y - 1, t.height + 2, () => this.submitCombatAction(act));
+      // Use column-scoped zones so two-column buttons don't overlap
+      const zx = PAD + col * colW + colW / 2;
+      const z = this.add.zone(zx, y + t.height / 2 - 1, colW, t.height + 2)
+        .setDepth(35).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => this.submitCombatAction(act));
+      this.clickZones.push(z);
       col++;
       if (col >= 2) { col = 0; y += t.height + 3; }
     }
