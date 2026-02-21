@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT, TYPEWRITER_SPEED, LOG_FADE_MS } from '../confi
 import { CombatSystem, Combatant, CombatAction } from '../systems/CombatSystem';
 import { DialogSystem, DialogTree } from '../systems/DialogSystem';
 import { WorldScene } from './WorldScene';
+import { VirtualPad } from '../ui/VirtualPad';
+import { AudioManager } from '../systems/AudioManager';
 import classesData from '../data/classes.json';
 import skillsData from '../data/skills.json';
 import itemsData from '../data/items.json';
@@ -57,6 +59,7 @@ export class HUDScene extends Phaser.Scene {
   private dialogChoicesRendered = false;
 
   private worldScene!: WorldScene;
+  private virtualPad?: VirtualPad;
 
   constructor() { super({ key: 'HUDScene' }); }
   init(data: { worldScene: WorldScene }) { this.worldScene = data.worldScene; }
@@ -68,6 +71,11 @@ export class HUDScene extends Phaser.Scene {
     this.dialog.setActionCallback((a) => this.worldScene.onDialogAction(a));
     this.renderStats();
     this.renderBottomBar();
+
+    // Create virtual pad for touch devices
+    if (this.worldScene.inputManager?.isTouchDevice) {
+      this.virtualPad = new VirtualPad(this, this.worldScene.inputManager);
+    }
   }
 
   // ══════════════════════════════════════
@@ -346,12 +354,14 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private dialogAdvance(): void {
+    AudioManager.getInstance().playSelect();
     this.addMessage(this.fullDialogText, '#cccccc');
     if (this.dialog.advance()) this.showDialogNode();
     else this.endDialog();
   }
 
   private dialogChoose(idx: number): void {
+    AudioManager.getInstance().playSelect();
     const choiceText = this.dialog.currentNode?.choices?.[idx]?.text ?? '';
     this.addMessage(this.fullDialogText, '#cccccc');
     if (choiceText) this.addMessage(`  > ${choiceText}`, '#aaaacc');
@@ -371,16 +381,23 @@ export class HUDScene extends Phaser.Scene {
   // ══════════════════════════════════════
 
   private onCombatEvent(event: string, data?: any): void {
+    const audio = AudioManager.getInstance();
     switch (event) {
-      case 'combat_start': case 'player_choose':
+      case 'combat_start':
+        audio.playCombatStart();
+        this.renderCombatActions(); break;
+      case 'player_choose':
         this.renderCombatActions(); break;
       case 'animate':
         this.onCombatAnimate(data?.result); break;
       case 'victory':
+        audio.playVictory();
         this.onCombatVictory(data); break;
       case 'defeat':
+        audio.playDefeat();
         this.onCombatDefeat(); break;
       case 'fled':
+        audio.playFlee();
         this.addMessage('Escaped from battle!', '#88ccff');
         this.mode = 'idle';
         this.clearActions();
@@ -445,18 +462,21 @@ export class HUDScene extends Phaser.Scene {
 
   private onCombatAnimate(result: any): void {
     if (!result) { this.combat.advanceFromAnimate(); return; }
+    const audio = AudioManager.getInstance();
     let msg = '', color = '#dddddd';
     if (result.type === 'damage') {
       msg = result.skillName
         ? `${result.actor} uses ${result.skillName}! ${result.value} dmg to ${result.target}${result.critical ? ' CRIT!' : ''}`
         : `${result.actor} hits ${result.target} for ${result.value}${result.critical ? ' CRIT!' : ''}`;
       color = '#ff6666';
+      if (result.critical) audio.playCriticalHit(); else audio.playAttackHit();
     } else if (result.type === 'heal') {
       msg = result.skillName ? `${result.skillName}: +${result.value} HP to ${result.target}` : `${result.target} heals ${result.value} HP`;
       color = '#66dd66';
-    } else if (result.type === 'buff') { msg = `${result.actor} uses ${result.skillName}!`; color = '#88aaff'; }
-    else if (result.type === 'miss') { msg = `${result.actor}'s attack missed!`; color = '#888888'; }
-    else if (result.type === 'flee_fail') { msg = 'Failed to escape!'; color = '#cc8844'; }
+      audio.playHeal();
+    } else if (result.type === 'buff') { msg = `${result.actor} uses ${result.skillName}!`; color = '#88aaff'; audio.playSelect(); }
+    else if (result.type === 'miss') { msg = `${result.actor}'s attack missed!`; color = '#888888'; audio.playMiss(); }
+    else if (result.type === 'flee_fail') { msg = 'Failed to escape!'; color = '#cc8844'; audio.playMiss(); }
     this.addMessage(msg, color);
     this.renderStats();
 
@@ -487,6 +507,7 @@ export class HUDScene extends Phaser.Scene {
     for (const item of rewards.loot) {
       const d = (itemsData as any)[item];
       this.addMessage(`  Loot: ${d?.name ?? item}`, '#66dd66');
+      AudioManager.getInstance().playItemPickup();
     }
     this.mode = 'idle';
     this.clearActions();

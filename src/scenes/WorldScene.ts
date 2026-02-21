@@ -8,6 +8,9 @@ import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { DungeonGenerator, DUNGEON_TILE, DungeonMap } from '../systems/DungeonGenerator';
 import { FogOfWar, Visibility } from '../systems/FogOfWar';
+import { InputManager } from '../systems/InputManager';
+import { SkillSystem } from '../systems/SkillSystem';
+import { AudioManager } from '../systems/AudioManager';
 import { rollFloat, rollInt } from '../utils/MathUtils';
 import encountersData from '../data/encounters.json';
 import chapter1Data from '../data/chapters/chapter1.json';
@@ -159,6 +162,7 @@ export class WorldScene extends Phaser.Scene {
   private enterKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private movePath: { x: number; y: number }[] = [];
+  inputManager!: InputManager;
   busy = false;
 
   constructor() { super({ key: 'WorldScene' }); }
@@ -175,6 +179,7 @@ export class WorldScene extends Phaser.Scene {
   create(): void {
     // Full-screen map viewport — HUD overlays on top
     this.cameras.main.setViewport(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.inputManager = new InputManager(this);
 
     if (this.input.keyboard) {
       this.cursorKeys = this.input.keyboard.createCursorKeys();
@@ -261,7 +266,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.iKey?.isDown) { this.iKey.reset(); p?.showInventory(); return; }
 
     // Enter/Space → interact with facing NPC
-    if (this.enterKey?.isDown || this.spaceKey?.isDown) {
+    if (this.enterKey?.isDown || this.spaceKey?.isDown || this.inputManager.consumePadAction()) {
       this.enterKey?.reset();
       this.spaceKey?.reset();
       this.tryInteract();
@@ -300,6 +305,9 @@ export class WorldScene extends Phaser.Scene {
     // Initialize fog of war
     this.fog = new FogOfWar(this.mapW, this.mapH, (x, y) => this.tileBlocksVision(x, y));
     this.fogGfx = this.add.graphics().setDepth(100);
+    // Restore previously explored tiles for this map
+    const savedFog = this.run.fogExplored?.[mapId];
+    if (savedFog) this.fog.deserializeExplored(savedFog);
     this.fog.update(this.player.gridX, this.player.gridY, VIEW_RADIUS);
     this.renderFog();
     this.updateNpcVisibility();
@@ -309,6 +317,13 @@ export class WorldScene extends Phaser.Scene {
     this.saveRun();
     this.cameras.main.setBounds(0, 0, this.mapW * TILE_SIZE, this.mapH * TILE_SIZE);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+
+    // Start area-appropriate ambient audio
+    const audio = AudioManager.getInstance();
+    if (mapId.startsWith('cave_boss')) audio.startAmbient('boss');
+    else if (mapId.startsWith('cave')) audio.startAmbient('cave');
+    else if (mapId === 'forest') audio.startAmbient('forest');
+    else audio.startAmbient('village');
   }
 
   private loadStatic(mapId: string, sx: number, sy: number): void {
@@ -360,6 +375,11 @@ export class WorldScene extends Phaser.Scene {
     else if (this.cursorKeys?.right.isDown || this.wasd?.d.isDown) dx = 1;
     if (this.cursorKeys?.up.isDown || this.wasd?.w.isDown) dy = -1;
     else if (this.cursorKeys?.down.isDown || this.wasd?.s.isDown) dy = 1;
+    // Fallback to virtual pad
+    if (dx === 0 && dy === 0) {
+      const pad = this.inputManager.getPadDirection();
+      dx = pad.x; dy = pad.y;
+    }
     if (dx !== 0 && dy !== 0) dy = 0;
     return (dx || dy) ? { x: dx, y: dy } : null;
   }
@@ -368,6 +388,7 @@ export class WorldScene extends Phaser.Scene {
     if (!dx && !dy) return;
     const moved = this.player.tryMove(dx, dy, (gx, gy) => this.isTileWalkable(gx, gy));
     if (moved) {
+      AudioManager.getInstance().playFootstep();
       this.run.stepCount++;
       this.run.position = { x: this.player.gridX, y: this.player.gridY };
       this.onStep();
@@ -491,6 +512,7 @@ export class WorldScene extends Phaser.Scene {
     this.inventory.addItem(item);
     this.currentTiles[this.player.gridY][this.player.gridX] = T.FLOOR;
     this.tilemap.putTileAt(T.FLOOR, this.player.gridX, this.player.gridY);
+    AudioManager.getInstance().playChestOpen();
     this.panel()?.addMessage(`Found chest! Got ${item.replace(/_/g, ' ')}!`, '#ddaa00');
   }
 
@@ -547,6 +569,14 @@ export class WorldScene extends Phaser.Scene {
     this.inventory.gold += rewards.gold;
     for (const item of rewards.loot) this.inventory.addItem(item);
     this.character.xp += rewards.xp;
+
+    // Process equipment mastery → skill learning
+    const learned = SkillSystem.processVictory(this.inventory.equipment, this.character);
+    for (const sk of learned) {
+      this.panel()?.addMessage(`Mastered ${sk.itemName}! Learned ${sk.skillName}!`, '#ffcc44');
+      AudioManager.getInstance().playLevelUp();
+    }
+
     SaveSystem.saveCharacter(this.character);
     this.saveRun();
   }
@@ -618,6 +648,11 @@ export class WorldScene extends Phaser.Scene {
     this.run.storyFlags = q.storyFlags;
     this.run.hp = Math.max(0, this.run.hp);
     this.run.mp = Math.max(0, this.run.mp);
+    // Save fog of war explored state for current map
+    if (this.fog && this.currentMapId) {
+      if (!this.run.fogExplored) this.run.fogExplored = {};
+      this.run.fogExplored[this.currentMapId] = this.fog.serializeExplored();
+    }
     SaveSystem.saveRun(this.run);
   }
 }

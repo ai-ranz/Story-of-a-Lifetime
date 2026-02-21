@@ -29,6 +29,7 @@ export interface RunState {
   dungeonSeed: number;
   dungeonFloor: number;
   stepCount: number;
+  fogExplored: Record<string, boolean[]>;
 }
 
 const SAVE_VERSION = 1;
@@ -114,6 +115,7 @@ export class SaveSystem {
       dungeonSeed: Date.now(),
       dungeonFloor: 0,
       stepCount: 0,
+      fogExplored: {},
     };
   }
 }

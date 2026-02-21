@@ -1,12 +1,19 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config';
 import { SaveSystem } from '../systems/SaveSystem';
+import { AudioManager } from '../systems/AudioManager';
 
 export class MainMenuScene extends Phaser.Scene {
   constructor() { super({ key: 'MainMenuScene' }); }
 
   create(): void {
     this.cameras.main.setBackgroundColor(0x111122);
+
+    // Initialize audio on first user gesture
+    this.input.once('pointerdown', () => {
+      AudioManager.getInstance().init();
+      AudioManager.getInstance().resume();
+    });
 
     const cx = GAME_WIDTH / 2;
     let y = GAME_HEIGHT / 3;
@@ -44,6 +51,11 @@ export class MainMenuScene extends Phaser.Scene {
 
     t.on('pointerover', () => t.setColor('#ffcc44'));
     t.on('pointerout', () => t.setColor('#aaaacc'));
-    t.on('pointerdown', cb);
+    t.on('pointerdown', () => {
+      AudioManager.getInstance().init();
+      AudioManager.getInstance().resume();
+      AudioManager.getInstance().playSelect();
+      cb();
+    });
   }
 }

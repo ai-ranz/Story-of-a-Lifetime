@@ -34,6 +34,7 @@ export class InputManager {
   private padDirection = { x: 0, y: 0 };
   private padAction = false;
   private padCancel = false;
+  private padActionJust = false;
 
   // Edge-trigger tracking — returns true only on the frame the key goes down
   private actionConsumed = false;
@@ -76,6 +77,7 @@ export class InputManager {
 
   /** Called by VirtualPad on A button. */
   setPadAction(pressed: boolean): void {
+    if (pressed && !this.padAction) this.padActionJust = true;
     this.padAction = pressed;
   }
 
@@ -176,5 +178,19 @@ export class InputManager {
   isDirectionHeld(): boolean {
     const state = this.getState();
     return state.direction.x !== 0 || state.direction.y !== 0;
+  }
+
+  /** Get pad direction without triggering edge-detection side effects. */
+  getPadDirection(): { x: number; y: number } {
+    return { x: this.padDirection.x, y: this.padDirection.y };
+  }
+
+  /** Returns true once per A-button press cycle (edge trigger for pad only). */
+  consumePadAction(): boolean {
+    if (this.padActionJust) {
+      this.padActionJust = false;
+      return true;
+    }
+    return false;
   }
 }
