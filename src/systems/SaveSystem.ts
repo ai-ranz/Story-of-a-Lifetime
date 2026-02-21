@@ -30,6 +30,7 @@ export interface RunState {
   dungeonFloor: number;
   stepCount: number;
   fogExplored: Record<string, boolean[]>;
+  defeatedEnemies: Record<string, number[]>;
 }
 
 const SAVE_VERSION = 1;
@@ -116,6 +117,7 @@ export class SaveSystem {
       dungeonFloor: 0,
       stepCount: 0,
       fogExplored: {},
+      defeatedEnemies: {},
     };
   }
 }

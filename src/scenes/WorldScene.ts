@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT, MOVE_DURATION, VIEW_RADIUS } from '../config';
 import { Player } from '../entities/Player';
 import { NPC } from '../entities/NPC';
+import { Enemy } from '../entities/Enemy';
 import { EntityFactory } from '../entities/EntityFactory';
 import { SaveSystem, RunState, CharacterState } from '../systems/SaveSystem';
 import { InventorySystem } from '../systems/InventorySystem';
@@ -140,6 +141,8 @@ const STATIC_MAPS: Record<string, StaticMapDef> = {
 export class WorldScene extends Phaser.Scene {
   player!: Player;
   npcs: NPC[] = [];
+  mapEnemies: Enemy[] = [];
+  private contactEnemy: Enemy | null = null;
   run!: RunState;
   character!: CharacterState;
   inventory!: InventorySystem;
@@ -291,12 +294,16 @@ export class WorldScene extends Phaser.Scene {
     if (this.tilemap) this.tilemap.destroy();
     this.npcs.forEach(n => n.destroy());
     this.npcs = [];
+    this.mapEnemies.forEach(e => e.destroy());
+    this.mapEnemies = [];
+    this.contactEnemy = null;
     if (this.player) this.player.destroy();
     if (this.fogGfx) this.fogGfx.destroy();
     this.dungeonMap = null;
     this.currentMapId = mapId;
     this.stepsSinceEncounter = 0;
     this.movePath = [];
+    if (!this.run.defeatedEnemies) this.run.defeatedEnemies = {};
 
     const chapterMap = chapter1Data.maps.find(m => m.id === mapId);
     if (chapterMap?.type === 'procedural') this.loadProcedural(mapId, chapterMap, startX, startY);
@@ -311,6 +318,7 @@ export class WorldScene extends Phaser.Scene {
     this.fog.update(this.player.gridX, this.player.gridY, VIEW_RADIUS);
     this.renderFog();
     this.updateNpcVisibility();
+    this.updateEnemyVisibility();
 
     this.run.currentMap = mapId;
     this.run.position = { x: this.player.gridX, y: this.player.gridY };
@@ -335,6 +343,9 @@ export class WorldScene extends Phaser.Scene {
     this.player = EntityFactory.createPlayer(this, sx, sy, cd.spriteKey);
     this.npcs = EntityFactory.createNPCsForMap(this, mapId);
     for (const n of this.npcs) n.setInteractive();
+    // Spawn visible enemies
+    const defeated = this.run.defeatedEnemies?.[mapId] ?? [];
+    this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, null, def.tiles, defeated);
   }
 
   private loadProcedural(mapId: string, cm: any, sx: number, sy: number): void {
@@ -359,6 +370,9 @@ export class WorldScene extends Phaser.Scene {
     const py = sy >= 0 ? sy : this.dungeonMap.startY;
     const cd = (classesData as any)[this.character.class];
     this.player = EntityFactory.createPlayer(this, px, py, cd.spriteKey);
+    // Spawn visible enemies in dungeon rooms
+    const defeated = this.run.defeatedEnemies?.[mapId] ?? [];
+    this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, this.dungeonMap, tiles, defeated);
   }
 
   private buildTilemap(tiles: number[][], w: number, h: number): void {
@@ -402,6 +416,7 @@ export class WorldScene extends Phaser.Scene {
     const t = this.currentTiles[gy]?.[gx];
     if (t === undefined || SOLID.has(t)) return false;
     if (this.npcs.some(n => n.gridX === gx && n.gridY === gy)) return false;
+    // Enemies are walkable — stepping on them triggers combat
     return true;
   }
 
@@ -410,11 +425,24 @@ export class WorldScene extends Phaser.Scene {
     this.fog.update(this.player.gridX, this.player.gridY, VIEW_RADIUS);
     this.renderFog();
     this.updateNpcVisibility();
+    this.updateEnemyVisibility();
+
+    // Check for enemy contact BEFORE exits/stairs (bumping into enemy = combat)
+    if (this.checkEnemyContact()) return;
 
     this.checkExits();
     this.checkStairs();
     this.checkChest();
     this.checkEncounter();
+
+    // HP/MP regen: restore 1 HP and 1 MP every 8 steps
+    if (this.run.stepCount % 8 === 0) {
+      let healed = false;
+      if (this.run.hp < this.run.maxHp) { this.run.hp = Math.min(this.run.maxHp, this.run.hp + 1); healed = true; }
+      if (this.run.mp < this.run.maxMp) { this.run.mp = Math.min(this.run.maxMp, this.run.mp + 1); healed = true; }
+      if (healed) this.panel()?.refreshStats();
+    }
+
     if (this.run.stepCount % 10 === 0) this.saveRun();
     this.panel()?.refreshStats();
   }
@@ -524,8 +552,10 @@ export class WorldScene extends Phaser.Scene {
     const table = (encountersData as any)[tid];
     if (!table) return;
     this.stepsSinceEncounter++;
-    if (this.stepsSinceEncounter < 3) return;
-    if (rollFloat() < table.encounterRate) {
+    if (this.stepsSinceEncounter < 5) return;
+    // Reduce random encounter rate when map has visible enemies
+    const rate = this.mapEnemies.length > 0 ? table.encounterRate * 0.3 : table.encounterRate;
+    if (rollFloat() < rate) {
       this.stepsSinceEncounter = 0;
       this.startRandomCombat(table);
     }
@@ -569,6 +599,17 @@ export class WorldScene extends Phaser.Scene {
     this.inventory.gold += rewards.gold;
     for (const item of rewards.loot) this.inventory.addItem(item);
     this.character.xp += rewards.xp;
+
+    // Remove the map enemy that was contacted (if any)
+    if (this.contactEnemy) {
+      if (!this.run.defeatedEnemies) this.run.defeatedEnemies = {};
+      if (!this.run.defeatedEnemies[this.currentMapId]) this.run.defeatedEnemies[this.currentMapId] = [];
+      this.run.defeatedEnemies[this.currentMapId].push(this.contactEnemy.spawnIndex);
+      const idx = this.mapEnemies.indexOf(this.contactEnemy);
+      if (idx >= 0) this.mapEnemies.splice(idx, 1);
+      this.contactEnemy.destroy();
+      this.contactEnemy = null;
+    }
 
     // Process equipment mastery → skill learning
     const learned = SkillSystem.processVictory(this.inventory.equipment, this.character);
@@ -637,6 +678,36 @@ export class WorldScene extends Phaser.Scene {
     for (const npc of this.npcs) {
       npc.setVisible(this.fog.getVisibility(npc.gridX, npc.gridY) === Visibility.VISIBLE);
     }
+  }
+
+  private updateEnemyVisibility(): void {
+    for (const enemy of this.mapEnemies) {
+      enemy.setVisible(this.fog.getVisibility(enemy.gridX, enemy.gridY) === Visibility.VISIBLE);
+    }
+  }
+
+  private checkEnemyContact(): boolean {
+    const px = this.player.gridX;
+    const py = this.player.gridY;
+    const enemy = this.mapEnemies.find(e => e.gridX === px && e.gridY === py);
+    if (!enemy) return false;
+
+    // Store the contacted enemy so we can remove it on victory
+    this.contactEnemy = enemy;
+    this.movePath = [];
+
+    // Build combat data from the enemy id
+    const d = (enemiesData as any)[enemy.enemyId];
+    if (!d) return false;
+
+    // Sometimes bring a friend (30% chance of a second enemy of same type)
+    const foes = [{ ...d, id: enemy.enemyId }];
+    if (rollFloat() < 0.3) {
+      foes.push({ ...d, id: enemy.enemyId });
+    }
+
+    this.panel()?.startCombat(foes, false);
+    return true;
   }
 
   saveRun(): void {
