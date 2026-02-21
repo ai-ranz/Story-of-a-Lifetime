@@ -3,45 +3,33 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config';
 import { CharacterState } from '../systems/SaveSystem';
 
 export class GameOverScene extends Phaser.Scene {
-  private character!: CharacterState;
+  constructor() { super({ key: 'GameOverScene' }); }
 
-  constructor() {
-    super({ key: 'GameOverScene' });
-  }
+  create(data: { character: CharacterState }): void {
+    this.cameras.main.setBackgroundColor(0x110000);
 
-  init(data: any): void {
-    this.character = data.character;
-  }
+    const cx = GAME_WIDTH / 2;
+    let y = GAME_HEIGHT / 3;
 
-  create(): void {
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x110000);
-
-    this.add.text(GAME_WIDTH / 2, 60, 'You Have Fallen', {
-      fontSize: '20px', color: '#cc2222', fontFamily: 'monospace',
+    this.add.text(cx, y, 'Game Over', {
+      fontSize: '24px', color: '#cc3333', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, 110, [
-      `Class: ${this.character.class}`,
-      `Level: ${this.character.level}`,
-      `Skills: ${this.character.learnedSkills.join(', ') || 'none'}`,
-      `Chapters: ${this.character.completedChapters.length}`,
-    ].join('\n'), {
-      fontSize: '9px', color: '#aaaaaa', fontFamily: 'monospace', align: 'center',
-    }).setOrigin(0.5);
-
-    this.add.text(GAME_WIDTH / 2, 180, 'Your knowledge endures.\nMaterial possessions are lost.', {
-      fontSize: '9px', color: '#cc8866', fontFamily: 'monospace', align: 'center',
-    }).setOrigin(0.5);
-
-    const btn = this.add.text(GAME_WIDTH / 2, 240, '[ Return to Menu ]', {
-      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
-    }).setOrigin(0.5).setInteractive();
-
-    btn.on('pointerdown', () => this.scene.start('MainMenuScene'));
-
-    if (this.input.keyboard) {
-      this.input.keyboard.on('keydown-ENTER', () => this.scene.start('MainMenuScene'));
-      this.input.keyboard.on('keydown-SPACE', () => this.scene.start('MainMenuScene'));
+    y += 40;
+    if (data.character) {
+      this.add.text(cx, y, `${data.character.name} has fallen.`, {
+        fontSize: '12px', color: '#999999', fontFamily: 'monospace',
+      }).setOrigin(0.5);
+      y += 24;
     }
+
+    y += 20;
+    const btn = this.add.text(cx, y, 'Return to Menu', {
+      fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    btn.on('pointerover', () => btn.setColor('#ffcc44'));
+    btn.on('pointerout', () => btn.setColor('#aaaacc'));
+    btn.on('pointerdown', () => this.scene.start('MainMenuScene'));
   }
 }

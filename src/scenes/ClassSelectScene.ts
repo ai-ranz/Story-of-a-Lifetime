@@ -4,100 +4,54 @@ import { SaveSystem } from '../systems/SaveSystem';
 import classesData from '../data/classes.json';
 import chapter1Data from '../data/chapters/chapter1.json';
 
+const CLASSES = Object.entries(classesData) as [string, any][];
+
 export class ClassSelectScene extends Phaser.Scene {
-  constructor() {
-    super({ key: 'ClassSelectScene' });
-  }
+  constructor() { super({ key: 'ClassSelectScene' }); }
 
   create(): void {
-    this.add.text(GAME_WIDTH / 2, 30, 'Choose Your Path', {
-      fontSize: '18px',
-      color: '#ffffff',
-      fontFamily: 'monospace',
+    this.cameras.main.setBackgroundColor(0x111122);
+
+    const cx = GAME_WIDTH / 2;
+    this.add.text(cx, 30, 'Choose Your Class', {
+      fontSize: '18px', color: '#ffcc44', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
-    const classes = Object.entries(classesData) as [string, any][];
-    let selectedIndex = 0;
+    const cardW = 200, cardH = 160, gap = 20;
+    const totalW = CLASSES.length * cardW + (CLASSES.length - 1) * gap;
+    const startX = (GAME_WIDTH - totalW) / 2;
+    const cardY = 80;
 
-    const cards: Phaser.GameObjects.Container[] = [];
-
-    classes.forEach(([key, data], i) => {
-      const cx = 80 + i * 120;
-      const cy = 130;
-
-      const container = this.add.container(cx, cy);
+    for (let i = 0; i < CLASSES.length; i++) {
+      const [key, data] = CLASSES[i];
+      const x = startX + i * (cardW + gap);
 
       // Card background
-      const bg = this.add.rectangle(0, 0, 100, 140, 0x333355, 0.8).setStrokeStyle(1, 0x6666aa);
-      container.add(bg);
+      const bg = this.add.rectangle(x + cardW / 2, cardY + cardH / 2, cardW, cardH, 0x222244, 0.8)
+        .setInteractive({ useHandCursor: true }).setStrokeStyle(1, 0x444466);
 
-      // Sprite preview
-      const sprite = this.add.sprite(0, -40, data.spriteKey);
-      container.add(sprite);
-
-      // Name
-      const name = this.add.text(0, -10, data.name, {
-        fontSize: '11px', color: '#ffffff', fontFamily: 'monospace',
-      }).setOrigin(0.5);
-      container.add(name);
-
-      // Key stats
-      const stats = `HP:${data.baseStats.hp} ATK:${data.baseStats.attack}\nDEF:${data.baseStats.defense} SPD:${data.baseStats.speed}\nMAG:${data.baseStats.magic} MP:${data.baseStats.mp}`;
-      const statText = this.add.text(0, 20, stats, {
-        fontSize: '8px', color: '#aaaaaa', fontFamily: 'monospace', align: 'center',
-      }).setOrigin(0.5);
-      container.add(statText);
-
-      // Make interactive
-      bg.setInteractive();
-      bg.on('pointerdown', () => {
-        selectedIndex = i;
-        updateSelection();
-        confirmSelection();
+      let ly = cardY + 12;
+      this.add.text(x + cardW / 2, ly, data.name, { fontSize: '14px', color: '#ffcc44', fontFamily: 'monospace' }).setOrigin(0.5);
+      ly += 22;
+      this.add.text(x + 8, ly, data.description, { fontSize: '9px', color: '#aaaacc', fontFamily: 'monospace', wordWrap: { width: cardW - 16 } });
+      ly += 36;
+      const stats = data.baseStats;
+      this.add.text(x + 8, ly, `HP:${stats.hp}  MP:${stats.mp}\nATK:${stats.attack}  DEF:${stats.defense}\nSPD:${stats.speed}  MAG:${stats.magic}`, {
+        fontSize: '9px', color: '#88aacc', fontFamily: 'monospace',
       });
 
-      cards.push(container);
-    });
-
-    // Description at bottom
-    const descText = this.add.text(GAME_WIDTH / 2, 230, '', {
-      fontSize: '9px', color: '#cccccc', fontFamily: 'monospace', wordWrap: { width: 400 },
-    }).setOrigin(0.5);
-
-    const updateSelection = () => {
-      cards.forEach((card, i) => {
-        const bg = card.getAt(0) as Phaser.GameObjects.Rectangle;
-        bg.setStrokeStyle(i === selectedIndex ? 2 : 1, i === selectedIndex ? 0xffff00 : 0x6666aa);
-        card.setScale(i === selectedIndex ? 1.05 : 1.0);
-      });
-      descText.setText(classes[selectedIndex][1].description);
-    };
-    updateSelection();
-
-    const confirmSelection = () => {
-      const [classKey, classData] = classes[selectedIndex];
-      const character = SaveSystem.createNewCharacter(classKey, classData.name, classData);
-      SaveSystem.saveCharacter(character);
-      const run = SaveSystem.createNewRun('chapter1', character, classData, chapter1Data);
-      SaveSystem.saveRun(run);
-      this.scene.start('WorldScene', { continue: true });
-    };
-
-    this.add.text(GAME_WIDTH / 2, 270, 'Arrow keys to select, Enter to confirm', {
-      fontSize: '8px', color: '#666666', fontFamily: 'monospace',
-    }).setOrigin(0.5);
-
-    if (this.input.keyboard) {
-      this.input.keyboard.on('keydown-LEFT', () => {
-        selectedIndex = (selectedIndex - 1 + classes.length) % classes.length;
-        updateSelection();
-      });
-      this.input.keyboard.on('keydown-RIGHT', () => {
-        selectedIndex = (selectedIndex + 1) % classes.length;
-        updateSelection();
-      });
-      this.input.keyboard.on('keydown-ENTER', confirmSelection);
-      this.input.keyboard.on('keydown-SPACE', confirmSelection);
+      bg.on('pointerover', () => bg.setFillStyle(0x333366));
+      bg.on('pointerout', () => bg.setFillStyle(0x222244));
+      bg.on('pointerdown', () => this.selectClass(key, data));
     }
+  }
+
+  private selectClass(classKey: string, data: any): void {
+    const name = data.name;
+    const character = SaveSystem.createNewCharacter(classKey, name, data);
+    SaveSystem.saveCharacter(character);
+    const run = SaveSystem.createNewRun(chapter1Data.id, character, data, chapter1Data);
+    SaveSystem.saveRun(run);
+    this.scene.start('WorldScene');
   }
 }

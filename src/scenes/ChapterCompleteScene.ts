@@ -3,59 +3,39 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config';
 import { CharacterState } from '../systems/SaveSystem';
 
 export class ChapterCompleteScene extends Phaser.Scene {
-  private character!: CharacterState;
-  private chapterTitle = '';
-  private outro = '';
+  constructor() { super({ key: 'ChapterCompleteScene' }); }
 
-  constructor() {
-    super({ key: 'ChapterCompleteScene' });
-  }
+  create(data: { character: CharacterState; chapterTitle: string; outro: string }): void {
+    this.cameras.main.setBackgroundColor(0x112211);
 
-  init(data: any): void {
-    this.character = data.character;
-    this.chapterTitle = data.chapterTitle ?? 'Chapter Complete';
-    this.outro = data.outro ?? '';
-  }
+    const cx = GAME_WIDTH / 2;
+    let y = 40;
 
-  create(): void {
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x001122);
-
-    this.add.text(GAME_WIDTH / 2, 40, 'Chapter Complete', {
-      fontSize: '18px', color: '#44ccff', fontFamily: 'monospace',
+    this.add.text(cx, y, 'Chapter Complete!', {
+      fontSize: '20px', color: '#ffcc44', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
-    this.add.text(GAME_WIDTH / 2, 65, this.chapterTitle, {
-      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
+    y += 34;
+    this.add.text(cx, y, data.chapterTitle ?? '', {
+      fontSize: '14px', color: '#88ccaa', fontFamily: 'monospace',
     }).setOrigin(0.5);
 
-    if (this.outro) {
-      this.add.text(GAME_WIDTH / 2, 120, this.outro, {
-        fontSize: '9px', color: '#cccccc', fontFamily: 'monospace',
-        wordWrap: { width: GAME_WIDTH - 40 }, align: 'center',
-      }).setOrigin(0.5);
+    y += 40;
+    if (data.outro) {
+      this.add.text(cx, y, data.outro, {
+        fontSize: '10px', color: '#cccccc', fontFamily: 'monospace',
+        wordWrap: { width: GAME_WIDTH - 80 }, align: 'center',
+      }).setOrigin(0.5, 0);
+      y += 100;
     }
 
-    this.add.text(GAME_WIDTH / 2, 200, [
-      `Level: ${this.character.level}`,
-      `Skills carried forward: ${this.character.learnedSkills.join(', ')}`,
-      `Chapters completed: ${this.character.completedChapters.length}`,
-    ].join('\n'), {
-      fontSize: '9px', color: '#88aacc', fontFamily: 'monospace', align: 'center',
-    }).setOrigin(0.5);
+    y += 20;
+    const btn = this.add.text(cx, y, 'Return to Menu', {
+      fontSize: '14px', color: '#aaaacc', fontFamily: 'monospace',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-    this.add.text(GAME_WIDTH / 2, 260, 'Your wisdom and skills endure.\nA new chapter awaits...', {
-      fontSize: '9px', color: '#aaccdd', fontFamily: 'monospace', align: 'center',
-    }).setOrigin(0.5);
-
-    const btn = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 30, '[ Continue ]', {
-      fontSize: '12px', color: '#ffffff', fontFamily: 'monospace',
-    }).setOrigin(0.5).setInteractive();
-
+    btn.on('pointerover', () => btn.setColor('#ffcc44'));
+    btn.on('pointerout', () => btn.setColor('#aaaacc'));
     btn.on('pointerdown', () => this.scene.start('MainMenuScene'));
-
-    if (this.input.keyboard) {
-      this.input.keyboard.on('keydown-ENTER', () => this.scene.start('MainMenuScene'));
-      this.input.keyboard.on('keydown-SPACE', () => this.scene.start('MainMenuScene'));
-    }
   }
 }

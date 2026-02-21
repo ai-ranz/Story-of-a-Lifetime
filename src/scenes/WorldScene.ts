@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
-import { TILE_SIZE, GAME_WIDTH, GAME_HEIGHT } from '../config';
+import { TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, MOVE_DURATION } from '../config';
 import { Player } from '../entities/Player';
 import { NPC } from '../entities/NPC';
 import { EntityFactory } from '../entities/EntityFactory';
-import { InputManager } from '../systems/InputManager';
 import { SaveSystem, RunState, CharacterState } from '../systems/SaveSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
@@ -14,551 +13,501 @@ import chapter1Data from '../data/chapters/chapter1.json';
 import classesData from '../data/classes.json';
 import enemiesData from '../data/enemies.json';
 
-// Static map definitions (hand-crafted tile arrays since we have no Tiled files)
-// Each map: 2D array of tile type strings
-const STATIC_MAPS: Record<string, { width: number; height: number; tiles: string[][]; exits: Array<{ x: number; y: number; target: string; tx: number; ty: number }> }> = {
-  village: {
-    width: 20, height: 15, tiles: generateVillageMap(), exits: [
-      { x: 19, y: 7, target: 'forest', tx: 0, ty: 7 },
-    ],
-  },
-  forest: {
-    width: 30, height: 20, tiles: generateForestMap(), exits: [
-      { x: 0, y: 7, target: 'village', tx: 18, ty: 7 },
-      { x: 29, y: 10, target: 'cave_floor1', tx: -1, ty: -1 }, // -1 = use dungeon start
-    ],
-  },
-  cave_boss: {
-    width: 15, height: 12, tiles: generateBossRoom(), exits: [
-      { x: 7, y: 11, target: 'cave_floor3', tx: -1, ty: -1 },
-    ],
-  },
+// Tile indices matching the tileset spritesheet order from BootScene
+const T = {
+  GRASS: 0, PATH: 1, WALL: 2, FLOOR: 3, WATER: 4, TREE: 5,
+  DOOR: 6, STAIRS_DOWN: 7, STAIRS_UP: 8, CHEST: 9,
+  HOUSE_WALL: 10, HOUSE_ROOF: 11, HOUSE_DOOR: 12,
 };
 
-function generateVillageMap(): string[][] {
-  const w = 20, h = 15;
-  const m: string[][] = [];
+const SOLID = new Set([T.WALL, T.TREE, T.WATER, T.HOUSE_WALL, T.HOUSE_ROOF]);
+
+// ---- Static map generators ----
+interface MapExit { x: number; y: number; target: string; tx: number; ty: number }
+interface StaticMapDef { width: number; height: number; tiles: number[][]; exits: MapExit[] }
+
+function generateVillageMap(): number[][] {
+  const w = 20, h = 15, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      // Border trees
-      if (y === 0 || y === h - 1 || x === 0) {
-        m[y][x] = 'tree';
-      } else if (x === w - 1) {
-        m[y][x] = y === 7 ? 'path' : 'tree'; // exit east at y=7
-      }
-      // Path through village
-      else if (y === 7) {
-        m[y][x] = 'path';
-      }
-      // Houses
-      else if ((x >= 3 && x <= 5 && y >= 3 && y <= 5)) {
-        m[y][x] = (x === 4 && y === 5) ? 'door' : 'house_wall';
-      } else if ((x >= 11 && x <= 13 && y >= 3 && y <= 5)) {
-        m[y][x] = (x === 12 && y === 5) ? 'door' : 'house_wall';
-      } else if ((x >= 3 && x <= 5 && y >= 9 && y <= 11)) {
-        m[y][x] = (x === 4 && y === 9) ? 'door' : 'house_wall';
-      }
-      // Water pond
-      else if (x >= 15 && x <= 17 && y >= 10 && y <= 12) {
-        m[y][x] = 'water';
-      }
-      // Everything else grass
-      else {
-        m[y][x] = 'grass';
-      }
+      if (y === 0 || y === h - 1 || x === 0) m[y][x] = T.TREE;
+      else if (x === w - 1) m[y][x] = y === 7 ? T.PATH : T.TREE;
+      else if (y === 7) m[y][x] = T.PATH;
+      else if (x >= 3 && x <= 5 && y >= 3 && y <= 5) m[y][x] = (x === 4 && y === 5) ? T.DOOR : T.HOUSE_WALL;
+      else if (x >= 11 && x <= 13 && y >= 3 && y <= 5) m[y][x] = (x === 12 && y === 5) ? T.DOOR : T.HOUSE_WALL;
+      else if (x >= 3 && x <= 5 && y >= 9 && y <= 11) m[y][x] = (x === 4 && y === 9) ? T.DOOR : T.HOUSE_WALL;
+      else if (x >= 15 && x <= 17 && y >= 10 && y <= 12) m[y][x] = T.WATER;
+      else m[y][x] = T.GRASS;
     }
   }
   return m;
 }
 
-function generateForestMap(): string[][] {
-  const w = 30, h = 20;
-  const m: string[][] = [];
+function generateForestMap(): number[][] {
+  const w = 30, h = 20, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      if (y === 0 || y === h - 1) {
-        m[y][x] = 'tree';
-      } else if (x === 0) {
-        m[y][x] = y === 7 ? 'path' : 'tree'; // entrance from village
-      } else if (x === w - 1) {
-        m[y][x] = y === 10 ? 'path' : 'tree'; // exit to cave
-      }
-      // Winding path
-      else if ((y === 7 && x <= 10) || (x === 10 && y >= 7 && y <= 10) || (y === 10 && x >= 10)) {
-        m[y][x] = 'path';
-      }
-      // Scattered trees
-      else if (Math.abs(Math.sin(x * 3.7 + y * 2.1)) > 0.65) {
-        m[y][x] = 'tree';
-      } else {
-        m[y][x] = 'grass';
-      }
+      if (y === 0 || y === h - 1) m[y][x] = T.TREE;
+      else if (x === 0) m[y][x] = y === 7 ? T.PATH : T.TREE;
+      else if (x === w - 1) m[y][x] = y === 10 ? T.PATH : T.TREE;
+      else if ((y === 7 && x <= 10) || (x === 10 && y >= 7 && y <= 10) || (y === 10 && x >= 10)) m[y][x] = T.PATH;
+      else if (Math.abs(Math.sin(x * 3.7 + y * 2.1)) > 0.65) m[y][x] = T.TREE;
+      else m[y][x] = T.GRASS;
     }
   }
   return m;
 }
 
-function generateBossRoom(): string[][] {
-  const w = 15, h = 12;
-  const m: string[][] = [];
+function generateBossRoom(): number[][] {
+  const w = 15, h = 12, m: number[][] = [];
   for (let y = 0; y < h; y++) {
     m[y] = [];
     for (let x = 0; x < w; x++) {
-      if (y === 0 || x === 0 || x === w - 1) {
-        m[y][x] = 'wall';
-      } else if (y === h - 1) {
-        m[y][x] = x === 7 ? 'stairs_up' : 'wall';
-      } else {
-        m[y][x] = 'floor';
-      }
+      if (y === 0 || x === 0 || x === w - 1) m[y][x] = T.WALL;
+      else if (y === h - 1) m[y][x] = x === 7 ? T.STAIRS_UP : T.WALL;
+      else m[y][x] = T.FLOOR;
     }
   }
   return m;
 }
 
-const TILE_KEY_MAP: Record<string, string> = {
-  grass: 'tile_grass',
-  path: 'tile_path',
-  wall: 'tile_wall',
-  floor: 'tile_floor',
-  water: 'tile_water',
-  tree: 'tile_tree',
-  door: 'tile_door',
-  house_wall: 'tile_house_wall',
-  house_roof: 'tile_house_roof',
-  house_door: 'tile_house_door',
-  stairs_down: 'tile_stairs_down',
-  stairs_up: 'tile_stairs_up',
-  chest: 'tile_chest',
+const STATIC_MAPS: Record<string, StaticMapDef> = {
+  village: { width: 20, height: 15, tiles: generateVillageMap(), exits: [{ x: 19, y: 7, target: 'forest', tx: 1, ty: 7 }] },
+  forest: { width: 30, height: 20, tiles: generateForestMap(), exits: [{ x: 0, y: 7, target: 'village', tx: 18, ty: 7 }, { x: 29, y: 10, target: 'cave_floor1', tx: -1, ty: -1 }] },
+  cave_boss: { width: 15, height: 12, tiles: generateBossRoom(), exits: [{ x: 7, y: 11, target: 'cave_floor3', tx: -1, ty: -1 }] },
 };
-
-const SOLID_TILES = new Set(['wall', 'tree', 'water', 'house_wall', 'house_roof']);
 
 export class WorldScene extends Phaser.Scene {
-  private player!: Player;
-  private npcs: NPC[] = [];
-  private input2!: InputManager;
-  private inventory!: InventorySystem;
-  private quests!: QuestSystem;
-  private run!: RunState;
-  private character!: CharacterState;
-  private mapContainer!: Phaser.GameObjects.Container;
+  player!: Player;
+  npcs: NPC[] = [];
+  run!: RunState;
+  character!: CharacterState;
+  inventory!: InventorySystem;
+  quests!: QuestSystem;
+
+  private tilemap!: Phaser.Tilemaps.Tilemap;
+  private tileLayer!: Phaser.Tilemaps.TilemapLayer;
   private currentMapId = '';
-  private currentMapTiles: string[][] = [];
-  private currentMapWidth = 0;
-  private currentMapHeight = 0;
+  private currentTiles: number[][] = [];
+  private mapW = 0;
+  private mapH = 0;
   private dungeonMap: DungeonMap | null = null;
   private moveTimer = 0;
   private stepsSinceEncounter = 0;
+  private cursorKeys!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
+  private iKey!: Phaser.Input.Keyboard.Key;
+  private enterKey!: Phaser.Input.Keyboard.Key;
+  private spaceKey!: Phaser.Input.Keyboard.Key;
+  private movePath: { x: number; y: number }[] = [];
+  busy = false;
 
-  constructor() {
-    super({ key: 'WorldScene' });
-  }
+  constructor() { super({ key: 'WorldScene' }); }
 
   init(): void {
-    // Load save state
     this.character = SaveSystem.loadCharacter()!;
     this.run = SaveSystem.loadRun()!;
-
     this.inventory = new InventorySystem();
-    this.inventory.deserialize({
-      items: this.run.inventory,
-      equipment: this.run.equipment,
-      gold: this.run.gold,
-    });
-
+    this.inventory.deserialize({ items: this.run.inventory, equipment: this.run.equipment, gold: this.run.gold });
     this.quests = new QuestSystem();
-    this.quests.deserialize({
-      questFlags: this.run.questFlags,
-      storyFlags: this.run.storyFlags,
-    });
+    this.quests.deserialize({ questFlags: this.run.questFlags, storyFlags: this.run.storyFlags });
   }
 
   create(): void {
-    this.mapContainer = this.add.container(0, 0);
-    this.input2 = new InputManager(this);
+    // Map camera covers left portion only
+    this.cameras.main.setViewport(0, 0, MAP_WIDTH, MAP_HEIGHT);
 
-    // Load the current map
+    if (this.input.keyboard) {
+      this.cursorKeys = this.input.keyboard.createCursorKeys();
+      this.wasd = {
+        w: this.input.keyboard.addKey('W'),
+        a: this.input.keyboard.addKey('A'),
+        s: this.input.keyboard.addKey('S'),
+        d: this.input.keyboard.addKey('D'),
+      };
+      this.iKey = this.input.keyboard.addKey('I');
+      this.enterKey = this.input.keyboard.addKey('ENTER');
+      this.spaceKey = this.input.keyboard.addKey('SPACE');
+    }
+
     this.loadMap(this.run.currentMap, this.run.position.x, this.run.position.y);
+    this.scene.launch('SidePanelScene', { worldScene: this });
 
-    // Launch HUD overlay
-    this.scene.launch('HUDScene', { worldScene: this });
-
-    // Show chapter intro if this is the first time
     if (!this.quests.getStoryFlag('chapter_intro_shown')) {
       this.quests.setStoryFlag('chapter_intro_shown', true);
-      this.showStoryText(chapter1Data.story.intro);
+      // Slight delay so panel is ready
+      this.time.delayedCall(100, () => {
+        this.panel()?.addMessage(chapter1Data.story.intro, '#aaddff');
+      });
     }
+
+    // Click-to-move / click-to-interact on map
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.busy) return;
+      const p = this.panel();
+      if (p && p.mode !== 'idle') return;
+      const wp = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const gx = Math.floor(wp.x / TILE_SIZE);
+      const gy = Math.floor(wp.y / TILE_SIZE);
+
+      // Clicked an NPC?
+      const npc = this.npcs.find(n => n.gridX === gx && n.gridY === gy);
+      if (npc) {
+        // If adjacent, interact immediately
+        if (Math.abs(this.player.gridX - gx) + Math.abs(this.player.gridY - gy) === 1) {
+          this.player.facing = { x: gx - this.player.gridX, y: gy - this.player.gridY };
+          this.interactWith(npc);
+          return;
+        }
+        // Otherwise walk to adjacent tile, then interact
+        const adj = this.findAdjacentWalkable(gx, gy);
+        if (adj) {
+          const path = this.findPath(this.player.gridX, this.player.gridY, adj.x, adj.y);
+          if (path.length > 0) {
+            this.movePath = [...path, { x: gx, y: gy }]; // npc pos = sentinel
+          }
+        }
+        return;
+      }
+
+      // Clicked walkable tile
+      if (this.isTileWalkable(gx, gy)) {
+        const path = this.findPath(this.player.gridX, this.player.gridY, gx, gy);
+        if (path.length > 0) this.movePath = path;
+      }
+    });
   }
 
   update(_time: number, delta: number): void {
     if (this.player?.isMoving) return;
-    if (this.scene.isActive('DialogScene') || this.scene.isActive('CombatScene') || this.scene.isActive('InventoryScene')) return;
+    if (this.busy) return;
+    const p = this.panel();
+    if (p && p.mode !== 'idle') return;
 
-    const state = this.input2.getState();
-
-    // Inventory
-    if (state.inventory) {
-      this.scene.launch('InventoryScene', { inventory: this.inventory, run: this.run, character: this.character });
+    // Continue click-to-move path
+    if (this.movePath.length > 0) {
+      const next = this.movePath[0];
+      const npc = this.npcs.find(n => n.gridX === next.x && n.gridY === next.y);
+      if (npc) {
+        this.movePath = [];
+        this.player.facing = { x: next.x - this.player.gridX, y: next.y - this.player.gridY };
+        this.interactWith(npc);
+        return;
+      }
+      this.movePath.shift();
+      this.doMove(next.x - this.player.gridX, next.y - this.player.gridY);
       return;
     }
 
-    // Interact
-    if (state.action) {
+    // 'I' key → inventory
+    if (this.iKey?.isDown) { this.iKey.reset(); p?.showInventory(); return; }
+
+    // Enter/Space → interact with facing NPC
+    if (this.enterKey?.isDown || this.spaceKey?.isDown) {
+      this.enterKey?.reset();
+      this.spaceKey?.reset();
       this.tryInteract();
       return;
     }
 
-    // Movement with repeat delay
+    // Keyboard movement
     this.moveTimer -= delta;
-    const dir = this.input2.getDirectionJustPressed();
-    if (dir) {
-      this.tryPlayerMove(dir.x, dir.y);
-      this.moveTimer = 200; // initial delay before repeat
-    } else if (this.input2.isDirectionHeld() && this.moveTimer <= 0) {
-      const s = this.input2.getState();
-      this.tryPlayerMove(s.direction.x, s.direction.y);
-      this.moveTimer = 150;
+    const dir = this.keyDir();
+    if (!dir) { this.moveTimer = 0; return; }
+
+    if (this.moveTimer <= 0) {
+      this.movePath = [];
+      this.doMove(dir.x, dir.y);
+      this.moveTimer = MOVE_DURATION + 30;
     }
   }
 
-  // --- Map loading ---
+  // ====== Map management ======
 
-  private loadMap(mapId: string, startX: number, startY: number): void {
-    // Clear
-    this.mapContainer.removeAll(true);
+  loadMap(mapId: string, startX: number, startY: number): void {
+    if (this.tilemap) this.tilemap.destroy();
     this.npcs.forEach(n => n.destroy());
     this.npcs = [];
+    if (this.player) this.player.destroy();
     this.dungeonMap = null;
     this.currentMapId = mapId;
     this.stepsSinceEncounter = 0;
+    this.movePath = [];
 
     const chapterMap = chapter1Data.maps.find(m => m.id === mapId);
+    if (chapterMap?.type === 'procedural') this.loadProcedural(mapId, chapterMap, startX, startY);
+    else this.loadStatic(mapId, startX, startY);
 
-    if (chapterMap?.type === 'procedural') {
-      this.loadProceduralMap(mapId, chapterMap, startX, startY);
-    } else {
-      this.loadStaticMap(mapId, startX, startY);
-    }
-
-    // Update run state
     this.run.currentMap = mapId;
     this.run.position = { x: this.player.gridX, y: this.player.gridY };
     this.saveRun();
-
-    // Camera follow
-    this.cameras.main.setBounds(0, 0, this.currentMapWidth * TILE_SIZE, this.currentMapHeight * TILE_SIZE);
-    this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+    this.cameras.main.setBounds(0, 0, this.mapW * TILE_SIZE, this.mapH * TILE_SIZE);
+    this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
   }
 
-  private loadStaticMap(mapId: string, startX: number, startY: number): void {
-    const mapDef = STATIC_MAPS[mapId];
-    if (!mapDef) {
-      console.warn(`Unknown static map: ${mapId}`);
-      return;
-    }
-
-    this.currentMapWidth = mapDef.width;
-    this.currentMapHeight = mapDef.height;
-    this.currentMapTiles = mapDef.tiles;
-
-    // Render tiles
-    for (let y = 0; y < mapDef.height; y++) {
-      for (let x = 0; x < mapDef.width; x++) {
-        const tileType = mapDef.tiles[y][x];
-        const key = TILE_KEY_MAP[tileType] ?? 'tile_grass';
-        const sprite = this.add.sprite(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, key);
-        this.mapContainer.add(sprite);
-      }
-    }
-
-    // Create player
-    const classData = (classesData as any)[this.character.class];
-    this.player = EntityFactory.createPlayer(this, startX, startY, classData.spriteKey);
-
-    // Create NPCs for this map
+  private loadStatic(mapId: string, sx: number, sy: number): void {
+    const def = STATIC_MAPS[mapId];
+    if (!def) return;
+    this.mapW = def.width; this.mapH = def.height; this.currentTiles = def.tiles;
+    this.buildTilemap(def.tiles, def.width, def.height);
+    const cd = (classesData as any)[this.character.class];
+    this.player = EntityFactory.createPlayer(this, sx, sy, cd.spriteKey);
     this.npcs = EntityFactory.createNPCsForMap(this, mapId);
+    for (const n of this.npcs) n.setInteractive();
   }
 
-  private loadProceduralMap(mapId: string, chapterMap: any, startX: number, startY: number): void {
-    const floorNum = parseInt(mapId.replace(/\D/g, '') || '1');
-    this.dungeonMap = DungeonGenerator.generate(this.run.dungeonSeed, floorNum, chapterMap.width, chapterMap.height);
-
-    this.currentMapWidth = this.dungeonMap.width;
-    this.currentMapHeight = this.dungeonMap.height;
-
-    // Convert dungeon tiles to string tile array
-    this.currentMapTiles = [];
-    for (let y = 0; y < this.dungeonMap.height; y++) {
-      this.currentMapTiles[y] = [];
-      for (let x = 0; x < this.dungeonMap.width; x++) {
-        const t = this.dungeonMap.tiles[y][x];
-        let type = 'wall';
-        if (t === DUNGEON_TILE.FLOOR) type = 'floor';
-        else if (t === DUNGEON_TILE.STAIRS_DOWN) type = 'stairs_down';
-        else if (t === DUNGEON_TILE.STAIRS_UP) type = 'stairs_up';
-        else if (t === DUNGEON_TILE.CHEST) type = 'chest';
-        this.currentMapTiles[y][x] = type;
-
-        const key = TILE_KEY_MAP[type] ?? 'tile_wall';
-        const sprite = this.add.sprite(x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2, key);
-        this.mapContainer.add(sprite);
+  private loadProcedural(mapId: string, cm: any, sx: number, sy: number): void {
+    const floor = parseInt(mapId.replace(/\D/g, '') || '1');
+    this.dungeonMap = DungeonGenerator.generate(this.run.dungeonSeed, floor, cm.width, cm.height);
+    this.mapW = this.dungeonMap.width; this.mapH = this.dungeonMap.height;
+    const tiles: number[][] = [];
+    for (let y = 0; y < this.mapH; y++) {
+      tiles[y] = [];
+      for (let x = 0; x < this.mapW; x++) {
+        const dt = this.dungeonMap.tiles[y][x];
+        if (dt === DUNGEON_TILE.FLOOR) tiles[y][x] = T.FLOOR;
+        else if (dt === DUNGEON_TILE.STAIRS_DOWN) tiles[y][x] = T.STAIRS_DOWN;
+        else if (dt === DUNGEON_TILE.STAIRS_UP) tiles[y][x] = T.STAIRS_UP;
+        else if (dt === DUNGEON_TILE.CHEST) tiles[y][x] = T.CHEST;
+        else tiles[y][x] = T.WALL;
       }
     }
-
-    // Use dungeon start unless explicit
-    const sx = startX >= 0 ? startX : this.dungeonMap.startX;
-    const sy = startY >= 0 ? startY : this.dungeonMap.startY;
-
-    const classData = (classesData as any)[this.character.class];
-    this.player = EntityFactory.createPlayer(this, sx, sy, classData.spriteKey);
+    this.currentTiles = tiles;
+    this.buildTilemap(tiles, this.mapW, this.mapH);
+    const px = sx >= 0 ? sx : this.dungeonMap.startX;
+    const py = sy >= 0 ? sy : this.dungeonMap.startY;
+    const cd = (classesData as any)[this.character.class];
+    this.player = EntityFactory.createPlayer(this, px, py, cd.spriteKey);
   }
 
-  // --- Movement & collision ---
+  private buildTilemap(tiles: number[][], w: number, h: number): void {
+    this.tilemap = this.make.tilemap({ data: tiles, tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: w, height: h });
+    const ts = this.tilemap.addTilesetImage('tiles', 'tileset', TILE_SIZE, TILE_SIZE)!;
+    this.tileLayer = this.tilemap.createLayer(0, ts, 0, 0)!;
+  }
 
-  private tryPlayerMove(dx: number, dy: number): void {
-    if (dx === 0 && dy === 0) return;
+  // ====== Movement ======
 
+  private keyDir(): { x: number; y: number } | null {
+    let dx = 0, dy = 0;
+    if (this.cursorKeys?.left.isDown || this.wasd?.a.isDown) dx = -1;
+    else if (this.cursorKeys?.right.isDown || this.wasd?.d.isDown) dx = 1;
+    if (this.cursorKeys?.up.isDown || this.wasd?.w.isDown) dy = -1;
+    else if (this.cursorKeys?.down.isDown || this.wasd?.s.isDown) dy = 1;
+    if (dx !== 0 && dy !== 0) dy = 0;
+    return (dx || dy) ? { x: dx, y: dy } : null;
+  }
+
+  private doMove(dx: number, dy: number): void {
+    if (!dx && !dy) return;
     const moved = this.player.tryMove(dx, dy, (gx, gy) => this.isTileWalkable(gx, gy));
     if (moved) {
       this.run.stepCount++;
       this.run.position = { x: this.player.gridX, y: this.player.gridY };
-      this.onPlayerStep();
+      this.onStep();
+    } else {
+      this.movePath = [];
     }
   }
 
-  private isTileWalkable(gx: number, gy: number): boolean {
-    if (gx < 0 || gy < 0 || gy >= this.currentMapHeight || gx >= this.currentMapWidth) return false;
-    const tileType = this.currentMapTiles[gy]?.[gx];
-    if (!tileType || SOLID_TILES.has(tileType)) return false;
-    // Check NPC collision
+  isTileWalkable(gx: number, gy: number): boolean {
+    if (gx < 0 || gy < 0 || gy >= this.mapH || gx >= this.mapW) return false;
+    const t = this.currentTiles[gy]?.[gx];
+    if (t === undefined || SOLID.has(t)) return false;
     if (this.npcs.some(n => n.gridX === gx && n.gridY === gy)) return false;
     return true;
   }
 
-  private onPlayerStep(): void {
-    // Check exits
+  private onStep(): void {
     this.checkExits();
-    // Check dungeon stairs
-    this.checkDungeonStairs();
-    // Check encounters
-    this.checkRandomEncounter();
-    // Check chests
+    this.checkStairs();
     this.checkChest();
-    // Save periodically
+    this.checkEncounter();
     if (this.run.stepCount % 10 === 0) this.saveRun();
+    this.panel()?.refreshStats();
   }
 
-  private checkExits(): void {
-    const mapDef = STATIC_MAPS[this.currentMapId];
-    if (!mapDef) return;
+  // ====== Pathfinding (BFS, max 300 nodes) ======
 
-    for (const exit of mapDef.exits) {
-      if (this.player.gridX === exit.x && this.player.gridY === exit.y) {
-        const tx = exit.tx;
-        const ty = exit.ty;
-        this.loadMap(exit.target, tx, ty);
+  findPath(sx: number, sy: number, ex: number, ey: number): { x: number; y: number }[] {
+    if (sx === ex && sy === ey) return [];
+    const key = (x: number, y: number) => y * 10000 + x;
+    const visited = new Set<number>([key(sx, sy)]);
+    const parent = new Map<number, number>();
+    const queue = [key(sx, sy)];
+    const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+    let found = false;
+    let head = 0;
+    while (head < queue.length && !found && visited.size < 300) {
+      const cur = queue[head++];
+      const cx = cur % 10000, cy = Math.floor(cur / 10000);
+      for (const d of dirs) {
+        const nx = cx + d.x, ny = cy + d.y, nk = key(nx, ny);
+        if (visited.has(nk) || !this.isTileWalkable(nx, ny)) continue;
+        visited.add(nk);
+        parent.set(nk, cur);
+        if (nx === ex && ny === ey) { found = true; break; }
+        queue.push(nk);
+      }
+    }
+    if (!found) return [];
+    const path: { x: number; y: number }[] = [];
+    let ck = key(ex, ey);
+    while (ck !== key(sx, sy)) {
+      path.unshift({ x: ck % 10000, y: Math.floor(ck / 10000) });
+      ck = parent.get(ck)!;
+    }
+    return path;
+  }
+
+  private findAdjacentWalkable(gx: number, gy: number): { x: number; y: number } | null {
+    return [{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: -1, y: 0 }, { x: 1, y: 0 }]
+      .map(d => ({ x: gx + d.x, y: gy + d.y }))
+      .filter(p => this.isTileWalkable(p.x, p.y))
+      .sort((a, b) =>
+        (Math.abs(a.x - this.player.gridX) + Math.abs(a.y - this.player.gridY)) -
+        (Math.abs(b.x - this.player.gridX) + Math.abs(b.y - this.player.gridY))
+      )[0] ?? null;
+  }
+
+  // ====== Interaction ======
+
+  interactWith(npc: NPC): void { this.panel()?.startDialog(npc.dialogId); }
+
+  private tryInteract(): void {
+    const fx = this.player.gridX + this.player.facing.x;
+    const fy = this.player.gridY + this.player.facing.y;
+    const npc = this.npcs.find(n => n.gridX === fx && n.gridY === fy);
+    if (npc) { this.interactWith(npc); return; }
+    const cm = chapter1Data.maps.find(m => m.id === this.currentMapId);
+    if (cm && (cm as any).boss && !this.quests.getQuestFlag('boss_defeated')) {
+      this.startBossCombat((cm as any).boss);
+    }
+  }
+
+  // ====== Exits / Stairs / Chests / Encounters ======
+
+  private checkExits(): void {
+    const def = STATIC_MAPS[this.currentMapId];
+    if (!def) return;
+    for (const e of def.exits) {
+      if (this.player.gridX === e.x && this.player.gridY === e.y) {
+        this.loadMap(e.target, e.tx, e.ty);
         return;
       }
     }
   }
 
-  private checkDungeonStairs(): void {
+  private checkStairs(): void {
     if (!this.dungeonMap) return;
-
-    const tile = this.currentMapTiles[this.player.gridY]?.[this.player.gridX];
-    if (tile === 'stairs_down') {
-      // Go deeper or to boss
-      const chapterMaps = chapter1Data.maps;
-      const currentIdx = chapterMaps.findIndex(m => m.id === this.currentMapId);
-      if (currentIdx >= 0 && currentIdx < chapterMaps.length - 1) {
-        const nextMap = chapterMaps[currentIdx + 1];
-        this.run.dungeonFloor++;
-        this.loadMap(nextMap.id, -1, -1);
-      }
-    } else if (tile === 'stairs_up' && this.currentMapId !== chapter1Data.startMap) {
-      // Go back up
-      const chapterMaps = chapter1Data.maps;
-      const currentIdx = chapterMaps.findIndex(m => m.id === this.currentMapId);
-      if (currentIdx > 0) {
-        const prevMap = chapterMaps[currentIdx - 1];
-        this.run.dungeonFloor = Math.max(0, this.run.dungeonFloor - 1);
-        this.loadMap(prevMap.id, -1, -1);
-      }
-    }
-  }
-
-  private checkRandomEncounter(): void {
-    const chapterMap = chapter1Data.maps.find(m => m.id === this.currentMapId);
-    if (!chapterMap || (chapterMap as any).safeZone) return;
-
-    const encounterTableId = (chapterMap as any).encounterTable;
-    if (!encounterTableId) return;
-    const table = (encountersData as any)[encounterTableId];
-    if (!table) return;
-
-    this.stepsSinceEncounter++;
-    // Minimum 3 steps between encounters
-    if (this.stepsSinceEncounter < 3) return;
-
-    if (rollFloat() < table.encounterRate) {
-      this.stepsSinceEncounter = 0;
-      this.startCombat(table);
+    const t = this.currentTiles[this.player.gridY]?.[this.player.gridX];
+    const maps = chapter1Data.maps;
+    const idx = maps.findIndex(m => m.id === this.currentMapId);
+    if (t === T.STAIRS_DOWN && idx >= 0 && idx < maps.length - 1) {
+      this.run.dungeonFloor++;
+      this.loadMap(maps[idx + 1].id, -1, -1);
+    } else if (t === T.STAIRS_UP && this.currentMapId !== chapter1Data.startMap && idx > 0) {
+      this.run.dungeonFloor = Math.max(0, this.run.dungeonFloor - 1);
+      this.loadMap(maps[idx - 1].id, -1, -1);
     }
   }
 
   private checkChest(): void {
-    const tile = this.currentMapTiles[this.player.gridY]?.[this.player.gridX];
-    if (tile !== 'chest') return;
-
-    // Open chest: random potion
+    const t = this.currentTiles[this.player.gridY]?.[this.player.gridX];
+    if (t !== T.CHEST) return;
     const items = ['health_potion', 'mana_potion', 'herb'];
     const item = items[rollInt(0, items.length - 1)];
     this.inventory.addItem(item);
-    this.currentMapTiles[this.player.gridY][this.player.gridX] = 'floor';
-
-    // Redraw tile
-    // Simple approach: reload map visuals would be expensive. Just find and replace the sprite
-    this.showStoryText(`Found a chest! Got ${item.replace(/_/g, ' ')}!`);
+    this.currentTiles[this.player.gridY][this.player.gridX] = T.FLOOR;
+    this.tilemap.putTileAt(T.FLOOR, this.player.gridX, this.player.gridY);
+    this.panel()?.addMessage(`Found chest! Got ${item.replace(/_/g, ' ')}!`, '#ddaa00');
   }
 
-  // --- Interaction ---
-
-  private tryInteract(): void {
-    const fx = this.player.gridX + this.player.facing.x;
-    const fy = this.player.gridY + this.player.facing.y;
-
-    const npc = this.npcs.find(n => n.gridX === fx && n.gridY === fy);
-    if (npc) {
-      this.scene.launch('DialogScene', {
-        dialogId: npc.dialogId,
-        worldScene: this,
-      });
-      return;
-    }
-
-    // Check boss room trigger
-    const chapterMap = chapter1Data.maps.find(m => m.id === this.currentMapId);
-    if (chapterMap && (chapterMap as any).boss) {
-      if (!this.quests.getQuestFlag('boss_defeated')) {
-        this.startBossCombat((chapterMap as any).boss);
-      }
+  private checkEncounter(): void {
+    const cm = chapter1Data.maps.find(m => m.id === this.currentMapId);
+    if (!cm || (cm as any).safeZone) return;
+    const tid = (cm as any).encounterTable;
+    if (!tid) return;
+    const table = (encountersData as any)[tid];
+    if (!table) return;
+    this.stepsSinceEncounter++;
+    if (this.stepsSinceEncounter < 3) return;
+    if (rollFloat() < table.encounterRate) {
+      this.stepsSinceEncounter = 0;
+      this.startRandomCombat(table);
     }
   }
 
-  // --- Combat ---
+  // ====== Combat ======
 
-  private startCombat(encounterTable: any): void {
-    const enemyCount = rollInt(encounterTable.minEnemies, encounterTable.maxEnemies);
-    const enemies = this.rollEnemies(encounterTable.enemies, enemyCount);
-
-    this.scene.launch('CombatScene', {
-      enemies,
-      run: this.run,
-      character: this.character,
-      inventory: this.inventory,
-      worldScene: this,
-    });
+  startRandomCombat(table: any): void {
+    const cnt = rollInt(table.minEnemies, table.maxEnemies);
+    const enemies = this.rollEnemies(table.enemies, cnt);
+    this.panel()?.startCombat(enemies, false);
   }
 
-  private startBossCombat(bossId: string): void {
-    const bossData = (enemiesData as any)[bossId];
-    if (!bossData) return;
-
-    this.scene.launch('CombatScene', {
-      enemies: [{ ...bossData, id: bossId }],
-      run: this.run,
-      character: this.character,
-      inventory: this.inventory,
-      worldScene: this,
-      isBoss: true,
-    });
+  startBossCombat(bossId: string): void {
+    const d = (enemiesData as any)[bossId];
+    if (!d) return;
+    this.panel()?.startCombat([{ ...d, id: bossId }], true);
   }
 
-  private rollEnemies(enemyList: any[], count: number): any[] {
-    const totalWeight = enemyList.reduce((s: number, e: any) => s + e.weight, 0);
-    const result: any[] = [];
-
+  private rollEnemies(list: any[], count: number): any[] {
+    const tw = list.reduce((s: number, e: any) => s + e.weight, 0);
+    const res: any[] = [];
     for (let i = 0; i < count; i++) {
-      let roll = rollFloat() * totalWeight;
-      for (const entry of enemyList) {
-        roll -= entry.weight;
-        if (roll <= 0) {
-          const data = (enemiesData as any)[entry.id];
-          if (data) result.push({ ...data, id: entry.id });
+      let r = rollFloat() * tw;
+      for (const entry of list) {
+        r -= entry.weight;
+        if (r <= 0) {
+          const d = (enemiesData as any)[entry.id];
+          if (d) res.push({ ...d, id: entry.id });
           break;
         }
       }
     }
-    return result;
+    return res;
   }
 
-  // --- Public API for other scenes ---
+  // ====== Public callbacks ======
 
   onCombatVictory(rewards: { xp: number; gold: number; loot: string[] }): void {
     this.run.gold = (this.run.gold ?? 0) + rewards.gold;
     this.inventory.gold += rewards.gold;
-    for (const item of rewards.loot) {
-      this.inventory.addItem(item);
-    }
+    for (const item of rewards.loot) this.inventory.addItem(item);
     this.character.xp += rewards.xp;
-    // TODO: level up check
     SaveSystem.saveCharacter(this.character);
     this.saveRun();
-    this.scene.resume('WorldScene');
   }
 
   onCombatDefeat(): void {
     SaveSystem.deleteRun();
-    this.scene.stop('HUDScene');
+    this.scene.stop('SidePanelScene');
     this.scene.start('GameOverScene', { character: this.character });
-  }
-
-  onCombatFled(): void {
-    this.scene.resume('WorldScene');
   }
 
   onBossDefeated(): void {
     this.quests.setQuestFlag('boss_defeated', true);
     this.saveRun();
-    // Chapter complete
     this.character.completedChapters.push(chapter1Data.id);
     SaveSystem.saveCharacter(this.character);
     SaveSystem.deleteRun();
-    this.scene.stop('HUDScene');
-    this.scene.start('ChapterCompleteScene', {
-      character: this.character,
-      chapterTitle: chapter1Data.title,
-      outro: chapter1Data.story.outro,
-    });
+    this.scene.stop('SidePanelScene');
+    this.scene.start('ChapterCompleteScene', { character: this.character, chapterTitle: chapter1Data.title, outro: chapter1Data.story.outro });
   }
 
   onDialogAction(action: string): void {
     const [cmd, ...args] = action.split(':');
     const arg = args.join(':');
-
-    switch (cmd) {
-      case 'giveItem':
-        this.inventory.addItem(arg);
-        this.saveRun();
-        break;
-      case 'startQuest':
-        this.quests.setQuestFlag(arg, false); // quest started but not complete
-        this.saveRun();
-        break;
-      case 'openShop':
-        // TODO: implement shop
-        break;
-    }
+    if (cmd === 'giveItem') { this.inventory.addItem(arg); this.saveRun(); }
+    else if (cmd === 'startQuest') { this.quests.setQuestFlag(arg, false); this.saveRun(); }
   }
 
-  getRunState(): RunState { return this.run; }
-  getCharacter(): CharacterState { return this.character; }
-  getInventory(): InventorySystem { return this.inventory; }
+  panel(): any { return this.scene.get('SidePanelScene'); }
 
-  private saveRun(): void {
+  saveRun(): void {
     const inv = this.inventory.serialize();
     this.run.inventory = inv.items;
     this.run.equipment = inv.equipment;
@@ -569,12 +518,5 @@ export class WorldScene extends Phaser.Scene {
     this.run.hp = Math.max(0, this.run.hp);
     this.run.mp = Math.max(0, this.run.mp);
     SaveSystem.saveRun(this.run);
-  }
-
-  private showStoryText(text: string): void {
-    this.scene.launch('DialogScene', {
-      immediateText: text,
-      worldScene: this,
-    });
   }
 }
