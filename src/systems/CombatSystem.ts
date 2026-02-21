@@ -18,6 +18,7 @@ export interface Combatant {
   loot?: Array<{ itemId: string; chance: number }>;
   xpReward?: number;
   goldReward?: number;
+  spriteKey?: string;
 }
 
 export interface Buff {

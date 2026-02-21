@@ -602,6 +602,7 @@ export class WorldScene extends Phaser.Scene {
     const arg = args.join(':');
     if (cmd === 'giveItem') { this.inventory.addItem(arg); this.saveRun(); }
     else if (cmd === 'startQuest') { this.quests.setQuestFlag(arg, false); this.saveRun(); }
+    else if (cmd === 'openShop') { this.panel()?.showShop(); }
   }
 
   panel(): any { return this.scene.get('HUDScene'); }

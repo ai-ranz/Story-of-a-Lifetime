@@ -10,7 +10,7 @@ import skillsData from '../data/skills.json';
 import itemsData from '../data/items.json';
 import dialogData from '../data/dialogs/village.json';
 
-type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory';
+type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory' | 'shop';
 
 const PAD = 6;
 const TOP_H = 22;      // top stats bar height
@@ -114,6 +114,7 @@ export class HUDScene extends Phaser.Scene {
       stats: { attack: e.stats.attack, defense: e.stats.defense, speed: e.stats.speed, magic: e.stats.magic ?? 0 },
       skills: e.skills ?? [], ai: e.ai, buffs: [],
       loot: e.loot, xpReward: e.xpReward, goldReward: e.goldReward,
+      spriteKey: e.spriteKey,
     }));
     this.mode = 'combat';
     this.addMessage(`--- ${foes.map(f => f.name).join(', ')} appeared! ---`, '#ff8844');
@@ -121,6 +122,7 @@ export class HUDScene extends Phaser.Scene {
   }
 
   showInventory(): void { this.mode = 'inventory'; this.renderInventory(); }
+  showShop(): void { this.endDialog(); this.mode = 'shop'; this.renderShop(); }
 
   // ══════════════════════════════════════
   //  STATS BAR (top overlay)
@@ -356,7 +358,9 @@ export class HUDScene extends Phaser.Scene {
   private dialogAdvance(): void {
     AudioManager.getInstance().playSelect();
     this.addMessage(this.fullDialogText, '#cccccc');
-    if (this.dialog.advance()) this.showDialogNode();
+    if (this.dialog.advance()) {
+      if (this.mode === 'dialog') this.showDialogNode();
+    }
     else this.endDialog();
   }
 
@@ -365,7 +369,10 @@ export class HUDScene extends Phaser.Scene {
     const choiceText = this.dialog.currentNode?.choices?.[idx]?.text ?? '';
     this.addMessage(this.fullDialogText, '#cccccc');
     if (choiceText) this.addMessage(`  > ${choiceText}`, '#aaaacc');
-    if (this.dialog.choose(idx)) this.showDialogNode();
+    if (this.dialog.choose(idx)) {
+      // If the action callback changed the mode (e.g. openShop), don't overwrite it
+      if (this.mode === 'dialog') this.showDialogNode();
+    }
     else this.endDialog();
   }
 
@@ -414,11 +421,18 @@ export class HUDScene extends Phaser.Scene {
 
     let y = areaTop + PAD;
 
-    // Enemy HP display
+    // Enemy display with sprites
+    const enemyRowX = PAD;
     for (const e of this.combat.enemies) {
       const col = e.hp > 0 ? COL.hp : COL.dim;
-      const t = this.mkText(PAD, y, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
-      this.actionObjs.push(t); y += t.height + 2;
+      // Render sprite icon
+      if (e.spriteKey && this.textures.exists(e.spriteKey)) {
+        const icon = this.add.image(enemyRowX + 8, y + 6, e.spriteKey).setDepth(16).setScale(1.5);
+        if (e.hp <= 0) icon.setAlpha(0.4);
+        this.actionObjs.push(icon);
+      }
+      const t = this.mkText(enemyRowX + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
+      this.actionObjs.push(t); y += 16;
     }
     y += 4;
 
@@ -488,8 +502,13 @@ export class HUDScene extends Phaser.Scene {
     let y = areaTop + PAD;
     for (const e of this.combat.enemies) {
       const col = e.hp > 0 ? COL.hp : COL.dim;
-      const t = this.mkText(PAD, y, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
-      this.actionObjs.push(t); y += t.height + 2;
+      if (e.spriteKey && this.textures.exists(e.spriteKey)) {
+        const icon = this.add.image(PAD + 8, y + 6, e.spriteKey).setDepth(16).setScale(1.5);
+        if (e.hp <= 0) icon.setAlpha(0.4);
+        this.actionObjs.push(icon);
+      }
+      const t = this.mkText(PAD + 20, y + 6, `${e.name} HP:${Math.max(0, e.hp)}/${e.maxHp}`, col, 9);
+      this.actionObjs.push(t); y += 16;
     }
     y += 6;
     const tc = this.mkText(PAD + 4, y, '[Click to continue]', COL.dim, 9);
@@ -619,6 +638,123 @@ export class HUDScene extends Phaser.Scene {
     this.worldScene.saveRun();
     this.addMessage(`Used ${item.name}.`, '#66dd66');
     this.renderInventory();
+    this.renderStats();
+  }
+
+  // ══════════════════════════════════════
+  //  SHOP
+  // ══════════════════════════════════════
+
+  private static readonly SHOP_STOCK = [
+    'health_potion', 'mana_potion', 'wooden_sword', 'short_sword',
+    'apprentice_staff', 'leather_armor', 'herb',
+  ];
+
+  private renderShop(): void {
+    this.clearActions();
+    const inv = this.worldScene.inventory;
+
+    // Full screen dim overlay
+    this.overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COL.overlay, 0.7).setDepth(30);
+    this.actionObjs.push(this.overlayBg);
+
+    // Shop panel
+    const panelW = 380, panelH = 400;
+    const px = (GAME_WIDTH - panelW) / 2;
+    const py = (GAME_HEIGHT - panelH) / 2;
+    const panel = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31);
+    this.actionObjs.push(panel);
+    const border = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH)
+      .setStrokeStyle(1, 0x444466).setDepth(31);
+    this.actionObjs.push(border);
+
+    let y = py + PAD;
+    const push = (t: Phaser.GameObjects.GameObject) => { this.actionObjs.push(t); };
+
+    const t0 = this.invText(px + PAD, y, "--- BRYNN'S SHOP ---", COL.title, 11);
+    push(t0); y += t0.height + 4;
+
+    const tg = this.invText(px + PAD, y, `Your Gold: ${inv.gold}`, COL.gold, 9);
+    push(tg); y += tg.height + 6;
+
+    // Buy section
+    const tb = this.invText(px + PAD, y, 'Buy:', COL.dim, 9);
+    push(tb); y += tb.height + 2;
+
+    for (const itemId of HUDScene.SHOP_STOCK) {
+      const item = (itemsData as any)[itemId];
+      if (!item) continue;
+      const price = item.value ?? 0;
+      const canAfford = inv.gold >= price;
+      const label = `${item.name} - ${price}g`;
+      const t = this.invText(px + PAD + 4, y, label, canAfford ? COL.text : COL.dim, 9);
+      push(t);
+
+      if (canAfford && price > 0) {
+        const id = itemId;
+        const zone = this.add.zone(px + panelW / 2, y + t.height / 2, panelW - PAD * 2, t.height + 2)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', () => this.buyItem(id, price));
+        this.clickZones.push(zone);
+      }
+      y += t.height + 2;
+    }
+    y += 6;
+
+    // Sell section
+    const ts = this.invText(px + PAD, y, 'Sell:', COL.dim, 9);
+    push(ts); y += ts.height + 2;
+
+    if (inv.items.length === 0) {
+      const t = this.invText(px + PAD + 4, y, '(nothing to sell)', COL.dim, 9);
+      push(t); y += t.height + 2;
+    } else {
+      for (const slot of inv.items) {
+        const item = (itemsData as any)[slot.itemId];
+        if (!item || item.type === 'key_item') continue;
+        const sellPrice = Math.max(1, Math.floor((item.value ?? 0) / 2));
+        const label = `${item.name} x${slot.quantity} → ${sellPrice}g`;
+        const t = this.invText(px + PAD + 4, y, label, COL.text, 9);
+        push(t);
+        const id = slot.itemId;
+        const zone = this.add.zone(px + panelW / 2, y + t.height / 2, panelW - PAD * 2, t.height + 2)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        zone.on('pointerdown', () => this.sellItem(id, sellPrice));
+        this.clickZones.push(zone);
+        y += t.height + 2;
+      }
+    }
+    y += 8;
+
+    const tc = this.invText(px + panelW / 2, y, '[ Close ]', COL.title, 10);
+    tc.setOrigin(0.5, 0); push(tc);
+    this.addZone(y, tc.height + 4, () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+  }
+
+  private buyItem(itemId: string, price: number): void {
+    const inv = this.worldScene.inventory;
+    if (inv.gold < price) return;
+    inv.gold -= price;
+    this.worldScene.run.gold = inv.gold;
+    inv.addItem(itemId);
+    AudioManager.getInstance().playItemPickup();
+    const item = (itemsData as any)[itemId];
+    this.addMessage(`Bought ${item?.name ?? itemId}.`, '#66dd66');
+    this.worldScene.saveRun();
+    this.renderShop();
+    this.renderStats();
+  }
+
+  private sellItem(itemId: string, sellPrice: number): void {
+    const inv = this.worldScene.inventory;
+    inv.removeItem(itemId);
+    inv.gold += sellPrice;
+    this.worldScene.run.gold = inv.gold;
+    AudioManager.getInstance().playSelect();
+    const item = (itemsData as any)[itemId];
+    this.addMessage(`Sold ${item?.name ?? itemId} for ${sellPrice}g.`, '#ddaa00');
+    this.worldScene.saveRun();
+    this.renderShop();
     this.renderStats();
   }
 
