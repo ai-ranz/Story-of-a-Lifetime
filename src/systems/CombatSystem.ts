@@ -81,6 +81,7 @@ export class CombatSystem {
   lastResult: CombatResult | null = null;
   private eventCallback: CombatEventCallback = () => {};
   private victoryRewards: { xp: number; gold: number; loot: string[] } = { xp: 0, gold: 0, loot: [] };
+  enemyIntents: Map<string, string> = new Map();
 
   constructor() {
     this.fsm = new StateMachine();
@@ -94,7 +95,10 @@ export class CombatSystem {
         enter: () => this.onTurnStart(),
       })
       .addState('PLAYER_CHOOSE', {
-        enter: () => this.emit('player_choose', { combatant: this.currentCombatant }),
+        enter: () => {
+          this.computeAllIntents();
+          this.emit('player_choose', { combatant: this.currentCombatant });
+        },
       })
       .addState('EXECUTE_ACTION', {
         enter: () => this.onExecuteAction(),
@@ -489,6 +493,29 @@ export class CombatSystem {
   }
 
   // --- Enemy AI ---
+
+  computeAllIntents(): void {
+    this.enemyIntents.clear();
+    for (const enemy of this.enemies) {
+      if (enemy.hp <= 0) continue;
+      this.enemyIntents.set(enemy.id, this.previewEnemyIntent(enemy));
+    }
+  }
+
+  private previewEnemyIntent(enemy: Combatant): string {
+    if (enemy.skills.length > 0 && enemy.mp > 0) {
+      for (const skillId of enemy.skills) {
+        const skill = (skillsData as any)[skillId];
+        if (skill && enemy.mp >= skill.mpCost) {
+          return skill.name;
+        }
+      }
+    }
+    if (enemy.ai === 'defensive' && enemy.hp < enemy.maxHp * 0.3) {
+      return 'Defend';
+    }
+    return 'Attack';
+  }
 
   private decideEnemyAction(enemy: Combatant): CombatAction {
     // Boss or aggressive: use skills when available

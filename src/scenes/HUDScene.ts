@@ -25,6 +25,14 @@ const COL = {
   bar_bg: 0x222222, overlay: 0x000000,
 };
 
+const BUFF_ICONS: Record<string, { char: string; col: number; label: string }> = {
+  poison:  { char: 'P', col: 0x66cc66, label: 'Poison' },
+  burn:    { char: 'B', col: 0xff8800, label: 'Burn' },
+  freeze:  { char: 'F', col: 0x88ccff, label: 'Freeze' },
+  stun:    { char: 'S', col: 0xffcc00, label: 'Stun' },
+  defense: { char: 'D', col: 0x88aaff, label: 'Defense' },
+};
+
 function hexStr(s: string): number { return parseInt(s.replace('#', ''), 16); }
 
 interface FloatingMsg {
@@ -52,6 +60,9 @@ export class HUDScene extends Phaser.Scene {
   private shopTab: 'buy' | 'sell' = 'buy';
   private scrollOffset = 0;
   private combatSubmenu: null | 'skills' | 'items' = null;
+  private buffZones: Phaser.GameObjects.Zone[] = [];
+  private quickSlots: (string | null)[] = [null, null, null];
+  private invTab: 'equip' | 'items' | 'stats' = 'equip';
 
   // Persistent log for review
   private messageLog: { text: string; color: string }[] = [];
@@ -132,6 +143,7 @@ export class HUDScene extends Phaser.Scene {
 
   startCombat(enemies: any[], isBoss: boolean): void {
     this.isBoss = isBoss;
+    this.autoFillQuickSlots();
     const run = this.worldScene.run, char = this.worldScene.character;
     // Apply equipment stat modifiers to combat stats
     const eqMods = this.worldScene.inventory.getEquipmentStatModifiers();
@@ -161,8 +173,77 @@ export class HUDScene extends Phaser.Scene {
     this.combat.startCombat([player], foes);
   }
 
-  showInventory(): void { this.mode = 'inventory'; this.scrollOffset = 0; this.renderInventory(); }
+  showInventory(): void { this.mode = 'inventory'; this.scrollOffset = 0; this.invTab = 'equip'; this.renderInventory(); }
   showShop(): void { this.endDialog(); this.mode = 'shop'; this.scrollOffset = 0; this.shopTab = 'buy'; this.renderShop(); }
+
+  // ══════════════════════════════════════
+  //  QUICK SLOTS
+  // ══════════════════════════════════════
+
+  private autoFillQuickSlots(): void {
+    const inv = this.worldScene.inventory;
+    const consumables = inv.items
+      .filter(s => (itemsData as any)[s.itemId]?.type === 'consumable')
+      .map(s => s.itemId);
+    for (let i = 0; i < 3; i++) {
+      // Keep current slot if item still exists in inventory
+      if (this.quickSlots[i] && consumables.includes(this.quickSlots[i]!)) continue;
+      // Fill with next unslotted consumable
+      const used = this.quickSlots.filter(Boolean) as string[];
+      const next = consumables.find(id => !used.includes(id));
+      this.quickSlots[i] = next ?? null;
+    }
+  }
+
+  private renderQuickSlots(y: number, inCombat: boolean): number {
+    const inv = this.worldScene.inventory;
+    this.autoFillQuickSlots();
+    const slotW = 80;
+    const slotH = 22;
+    const gap = 4;
+    const totalW = slotW * 3 + gap * 2;
+    let sx = (GAME_WIDTH - totalW) / 2;
+
+    for (let i = 0; i < 3; i++) {
+      const itemId = this.quickSlots[i];
+      const item = itemId ? (itemsData as any)[itemId] : null;
+      const qty = itemId ? inv.getItemCount(itemId) : 0;
+      const hasItem = item && qty > 0;
+
+      // Slot background
+      const bg = this.add.rectangle(sx + slotW / 2, y + slotH / 2, slotW, slotH, 0x1a1a2e, 0.8)
+        .setStrokeStyle(1, hasItem ? 0x444466 : 0x333344).setDepth(16);
+      this.actionObjs.push(bg);
+
+      if (hasItem) {
+        // Abbreviated name + quantity
+        const abbr = item.name.length > 7 ? item.name.slice(0, 7) : item.name;
+        const t = this.mkText(sx + 4, y + slotH / 2, `${abbr} x${qty}`, COL.text, 8);
+        this.actionObjs.push(t);
+
+        const id = itemId!;
+        const z = this.add.zone(sx + slotW / 2, y + slotH / 2, slotW, slotH)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => {
+          if (inCombat) {
+            this.submitCombatAction({ type: 'item', itemId: id });
+          } else {
+            this.useConsumable(id);
+            this.autoFillQuickSlots();
+            this.renderBottomBar();
+          }
+        });
+        this.clickZones.push(z);
+      } else {
+        const t = this.mkText(sx + 4, y + slotH / 2, '(empty)', COL.dim, 8);
+        this.actionObjs.push(t);
+      }
+
+      sx += slotW + gap;
+    }
+
+    return y + slotH + 2;
+  }
 
   // ══════════════════════════════════════
   //  STATS BAR (top overlay)
@@ -170,6 +251,8 @@ export class HUDScene extends Phaser.Scene {
 
   private renderStats(): void {
     this.clearGroup(this.statsObjs);
+    for (const z of this.buffZones) z.destroy();
+    this.buffZones.length = 0;
     if (this.minimapGfx) { this.minimapGfx.destroy(); this.minimapGfx = undefined; }
     const run = this.worldScene?.run;
     const char = this.worldScene?.character;
@@ -187,6 +270,8 @@ export class HUDScene extends Phaser.Scene {
     x = this.drawBar(x, cy, 'HP', run.hp, run.maxHp, COL.hp, 70);
     x += 6;
     x = this.drawBar(x, cy, 'MP', run.mp, run.maxMp, COL.mp, 50);
+    x += 4;
+    x = this.renderBuffIcons(x, cy);
 
     // Right side: Floor, XP, Gold (right-aligned)
     let rx = GAME_WIDTH - PAD;
@@ -246,6 +331,69 @@ export class HUDScene extends Phaser.Scene {
     g.fillRect(ox + data.px * scale - ps / 4, oy + data.py * scale - ps / 4, ps, ps);
 
     this.minimapGfx = g;
+  }
+
+  private renderBuffIcons(x: number, cy: number): number {
+    if (this.mode !== 'combat') return x;
+    const player = this.combat.party[0];
+    if (!player) return x;
+
+    // Show status effects
+    for (const se of player.statusEffects ?? []) {
+      const icon = BUFF_ICONS[se.id];
+      if (!icon) continue;
+      const t = this.mkText(x, cy, icon.char, icon.col, 9);
+      t.setFontStyle('bold');
+      this.statsObjs.push(t);
+      // Tap zone for tooltip
+      const zx = x + t.width / 2;
+      const z = this.add.zone(zx, cy, t.width + 6, TOP_H)
+        .setDepth(25).setInteractive({ useHandCursor: true });
+      const turns = se.turnsLeft;
+      const label = icon.label;
+      z.on('pointerdown', () => this.showBuffTooltip(zx, TOP_H + 2, `${label} (${turns}t)`));
+      this.buffZones.push(z);
+      x += t.width + 3;
+    }
+
+    // Show active buffs (non-status, e.g. Defend)
+    for (const buff of player.buffs ?? []) {
+      const key = buff.stat === 'defense' ? 'defense' : buff.stat;
+      const icon = BUFF_ICONS[key];
+      if (!icon) {
+        // Generic buff icon for unknown stat buffs
+        const t = this.mkText(x, cy, '+', 0x88aaff, 9);
+        t.setFontStyle('bold');
+        this.statsObjs.push(t);
+        x += t.width + 3;
+        continue;
+      }
+      const t = this.mkText(x, cy, icon.char, icon.col, 9);
+      t.setFontStyle('bold');
+      this.statsObjs.push(t);
+      const zx = x + t.width / 2;
+      const z = this.add.zone(zx, cy, t.width + 6, TOP_H)
+        .setDepth(25).setInteractive({ useHandCursor: true });
+      const turns = buff.turnsLeft;
+      const label = icon.label;
+      z.on('pointerdown', () => this.showBuffTooltip(zx, TOP_H + 2, `${label} x${buff.multiplier} (${turns}t)`));
+      this.buffZones.push(z);
+      x += t.width + 3;
+    }
+
+    return x;
+  }
+
+  private showBuffTooltip(x: number, y: number, text: string): void {
+    const bg = this.add.rectangle(x, y + 8, 0, 16, COL.overlay, 0.85).setDepth(50).setOrigin(0.5, 0.5);
+    const t = this.add.text(x, y + 8, text, {
+      fontSize: '9px', color: '#dddddd', fontFamily: 'monospace',
+    }).setDepth(51).setOrigin(0.5, 0.5);
+    bg.width = t.width + 8;
+    this.tweens.add({
+      targets: [bg, t], alpha: 0, delay: 1500, duration: 400,
+      onComplete: () => { bg.destroy(); t.destroy(); },
+    });
   }
 
   private drawBar(x: number, cy: number, label: string, cur: number, max: number, color: number, barW: number): number {
@@ -323,7 +471,7 @@ export class HUDScene extends Phaser.Scene {
 
   private getBottomTop(): number {
     if (this.mode === 'combat' || this.mode === 'dialog') return GAME_HEIGHT - ACTION_H;
-    return GAME_HEIGHT - BTN_H;
+    return GAME_HEIGHT - BTN_H - 26; // account for quick slots row
   }
 
   // ══════════════════════════════════════
@@ -333,6 +481,10 @@ export class HUDScene extends Phaser.Scene {
   private renderBottomBar(): void {
     this.clearActions();
     if (this.mode !== 'idle') return;
+
+    // Quick slots row above bottom bar
+    const qsY = GAME_HEIGHT - BTN_H - 26;
+    this.renderQuickSlots(qsY, false);
 
     const y = GAME_HEIGHT - BTN_H;
     const bg = this.add.rectangle(GAME_WIDTH / 2, y + BTN_H / 2, GAME_WIDTH, BTN_H, COL.overlay, 0.7).setDepth(10);
@@ -525,7 +677,9 @@ export class HUDScene extends Phaser.Scene {
 
     let y = areaTop + PAD;
     y = this.renderEnemyStatus(y);
-    y += 4;
+    y += 2;
+    y = this.renderQuickSlots(y, true);
+    y += 2;
 
     if (this.combatSubmenu === null) {
       const p = this.combat.party[0];
@@ -584,9 +738,31 @@ export class HUDScene extends Phaser.Scene {
       const statusSuffix = statusStr ? ` [${statusStr}]` : '';
       const t = this.mkText(PAD + 18, y + 5, `${e.name} ${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, fontSize);
       this.actionObjs.push(t);
+
+      // Enemy intent indicator
+      const intent = this.combat.enemyIntents.get(e.id);
+      if (intent && e.hp > 0) {
+        const display = this.isBoss ? this.categorizeIntent(intent) : intent;
+        const it = this.mkText(PAD + 18 + t.width + 8, y + 5, `\u2192 ${display}`, 0xff9966, fontSize - 1);
+        this.actionObjs.push(it);
+      }
+
       y += fontSize + 6;
     }
     return y;
+  }
+
+  private categorizeIntent(intent: string): string {
+    if (intent === 'Attack') return 'Physical';
+    if (intent === 'Defend') return 'Defending';
+    for (const [, data] of Object.entries(skillsData as any)) {
+      if ((data as any).name === intent) {
+        if ((data as any).type === 'magic') return 'Magic';
+        if ((data as any).type === 'buff') return 'Defensive';
+        return 'Physical';
+      }
+    }
+    return intent;
   }
 
   private renderCombatButtonGrid(y: number, actions: { label: string; cb: () => void; dim?: boolean }[]): void {
@@ -697,6 +873,7 @@ export class HUDScene extends Phaser.Scene {
     }
     this.mode = 'idle';
     this.clearActions();
+    this.autoFillQuickSlots();
     this.renderStats();
     this.renderBottomBar();
   }
@@ -729,11 +906,12 @@ export class HUDScene extends Phaser.Scene {
     this.clearActions();
     const inv = this.worldScene.inventory;
     const run = this.worldScene.run;
+    const char = this.worldScene.character;
 
     this.overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COL.overlay, 0.7).setDepth(30);
     this.actionObjs.push(this.overlayBg);
 
-    const panelW = 360, panelH = 370;
+    const panelW = 360, panelH = 380;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
     this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
@@ -750,14 +928,60 @@ export class HUDScene extends Phaser.Scene {
     gt.setOrigin(1, 0); push(gt);
     y += this.fs(11) + 6;
 
-    // Stats summary
-    const eqMods = inv.getEquipmentStatModifiers();
-    push(this.invText(px + PAD, y,
-      `ATK:${run.stats.attack + (eqMods.attack ?? 0)}  DEF:${run.stats.defense + (eqMods.defense ?? 0)}  SPD:${run.stats.speed + (eqMods.speed ?? 0)}  MAG:${run.stats.magic + (eqMods.magic ?? 0)}`,
-      COL.dim, szBody));
-    y += szBody + 4;
+    // Tab buttons
+    const tabs: { key: 'equip' | 'items' | 'stats'; label: string }[] = [
+      { key: 'equip', label: 'Equip' },
+      { key: 'items', label: 'Items' },
+      { key: 'stats', label: 'Stats' },
+    ];
+    let tabX = px + PAD;
+    for (const tab of tabs) {
+      const active = this.invTab === tab.key;
+      const tl = this.invText(tabX, y, active ? `[${tab.label}]` : ` ${tab.label} `, active ? COL.title : COL.dim, szBody);
+      push(tl);
+      const tz = this.add.zone(tabX + tl.width / 2, y + tl.height / 2, tl.width + 12, rowH)
+        .setDepth(35).setInteractive({ useHandCursor: true });
+      const k = tab.key;
+      tz.on('pointerdown', () => { if (this.invTab !== k) { this.invTab = k; this.scrollOffset = 0; this.renderInventory(); } });
+      this.clickZones.push(tz);
+      tabX += tl.width + 12;
+    }
+    y += rowH + 2;
 
-    // Equipment slots
+    // Divider
+    const dg = this.add.graphics().setDepth(32);
+    dg.lineStyle(1, 0x444466, 0.5);
+    dg.lineBetween(px + PAD, y, px + panelW - PAD, y);
+    push(dg); y += 4;
+
+    const closeH = 26;
+    const listBottom = py + panelH - PAD - closeH;
+    const maxRows = Math.floor((listBottom - y) / rowH);
+
+    if (this.invTab === 'equip') {
+      this.renderEquipTab(px, y, panelW, rowH, szBody, maxRows, push);
+    } else if (this.invTab === 'items') {
+      this.renderItemsTab(px, y, panelW, rowH, szBody, maxRows, push);
+    } else {
+      this.renderStatsTab(px, y, panelW, szBody, push);
+    }
+
+    // Close button at fixed bottom
+    const closeY = py + panelH - PAD - 12;
+    const tc = this.invText(px + panelW / 2, closeY, '[ Close ]', COL.title, this.fs(10));
+    tc.setOrigin(0.5, 0); push(tc);
+    const cz = this.add.zone(px + panelW / 2, closeY + 10, panelW - PAD * 2, 24)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    cz.on('pointerdown', () => { this.mode = 'idle'; this.scrollOffset = 0; this.clearActions(); this.autoFillQuickSlots(); this.renderBottomBar(); });
+    this.clickZones.push(cz);
+  }
+
+  private renderEquipTab(px: number, y: number, panelW: number, rowH: number, szBody: number, maxRows: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
+    const inv = this.worldScene.inventory;
+    const run = this.worldScene.run;
+    const eqMods = inv.getEquipmentStatModifiers();
+
+    // Current equipment slots
     for (const slot of ['weapon', 'armor', 'accessory'] as const) {
       const id = inv.equipment[slot];
       const name = id ? ((itemsData as any)[id]?.name ?? id) : '\u2014';
@@ -773,19 +997,62 @@ export class HUDScene extends Phaser.Scene {
     }
     y += 2;
 
-    const dg = this.add.graphics().setDepth(32);
-    dg.lineStyle(1, 0x444466, 0.5);
-    dg.lineBetween(px + PAD, y, px + panelW - PAD, y);
-    push(dg); y += 4;
-
-    push(this.invText(px + PAD, y, 'Items:', COL.dim, szBody));
+    // Equippable items from inventory with stat diff preview
+    push(this.invText(px + PAD, y, 'Equippable:', COL.dim, szBody));
     y += szBody + 2;
 
-    // Scrollable items list
-    const closeH = 26;
-    const listBottom = py + panelH - PAD - closeH;
-    const maxRows = Math.floor((listBottom - y) / rowH);
-    const total = inv.items.length;
+    const equipItems = inv.items.filter(s => (itemsData as any)[s.itemId]?.type === 'equipment');
+    const total = equipItems.length;
+
+    if (total === 0) {
+      push(this.invText(px + PAD + 4, y, '(none)', COL.dim, szBody));
+    } else {
+      const availRows = maxRows - 5; // 3 equipment slots + label + header
+      const needsScroll = total > availRows;
+      const displayRows = needsScroll ? availRows - 1 : availRows;
+      const off = needsScroll ? Math.min(this.scrollOffset, Math.max(0, total - displayRows)) : 0;
+      const visible = equipItems.slice(off, off + displayRows);
+
+      for (const s of visible) {
+        const item = (itemsData as any)[s.itemId];
+        // Stat diff: compute what would change if equipped
+        const currentSlot = item.slot as 'weapon' | 'armor' | 'accessory';
+        const currentEqId = inv.equipment[currentSlot];
+        const currentMods = currentEqId ? ((itemsData as any)[currentEqId]?.statModifiers ?? {}) : {};
+        const newMods = item.statModifiers ?? {};
+        const diffParts: string[] = [];
+        for (const stat of ['attack', 'defense', 'speed', 'magic']) {
+          const diff = (newMods[stat] ?? 0) - (currentMods[stat] ?? 0);
+          if (diff > 0) diffParts.push(`+${diff} ${stat.slice(0, 3).toUpperCase()}`);
+          else if (diff < 0) diffParts.push(`${diff} ${stat.slice(0, 3).toUpperCase()}`);
+        }
+        const diffStr = diffParts.length > 0 ? ` (${diffParts.join(', ')})` : '';
+        const diffCol = diffParts.some(p => p.startsWith('+')) ? COL.heal : diffParts.length > 0 ? COL.dmg : COL.dim;
+
+        push(this.invText(px + PAD + 4, y, `${item.name}`, COL.text, szBody));
+        if (diffStr) {
+          const dt = this.invText(px + PAD + 4 + (item.name.length + 1) * 5.5, y, diffStr, diffCol, szBody - 1);
+          push(dt);
+        }
+
+        const id = s.itemId;
+        const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+          .setDepth(35).setInteractive({ useHandCursor: true });
+        z.on('pointerdown', () => { inv.equip(id); this.scrollOffset = 0; this.renderInventory(); });
+        this.clickZones.push(z);
+        y += rowH;
+      }
+      if (needsScroll) this.renderScrollIndicator(px, y, panelW, off, visible.length, total, displayRows, szBody, push);
+    }
+  }
+
+  private renderItemsTab(px: number, y: number, panelW: number, rowH: number, szBody: number, maxRows: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
+    const inv = this.worldScene.inventory;
+    const nonEquip = inv.items.filter(s => {
+      const item = (itemsData as any)[s.itemId];
+      return item && item.type !== 'equipment';
+    });
+    const total = nonEquip.length;
 
     if (total === 0) {
       push(this.invText(px + PAD + 4, y, '(empty)', COL.dim, szBody));
@@ -793,18 +1060,15 @@ export class HUDScene extends Phaser.Scene {
       const needsScroll = total > maxRows;
       const displayRows = needsScroll ? maxRows - 1 : maxRows;
       const off = needsScroll ? Math.min(this.scrollOffset, Math.max(0, total - displayRows)) : 0;
-      const visible = inv.items.slice(off, off + displayRows);
+      const visible = nonEquip.slice(off, off + displayRows);
+
       for (const s of visible) {
         const item = (itemsData as any)[s.itemId];
         const nm = item?.name ?? s.itemId;
-        push(this.invText(px + PAD + 4, y, `${nm} x${s.quantity}`, COL.text, szBody));
-        if (item?.type === 'equipment') {
-          const id = s.itemId;
-          const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
-            .setDepth(35).setInteractive({ useHandCursor: true });
-          z.on('pointerdown', () => { inv.equip(id); this.scrollOffset = 0; this.renderInventory(); });
-          this.clickZones.push(z);
-        } else if (item?.type === 'consumable') {
+        const isSlotted = this.quickSlots.includes(s.itemId);
+        const prefix = isSlotted ? '\u2605 ' : '';
+        push(this.invText(px + PAD + 4, y, `${prefix}${nm} x${s.quantity}`, COL.text, szBody));
+        if (item?.type === 'consumable') {
           const id = s.itemId;
           const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
             .setDepth(35).setInteractive({ useHandCursor: true });
@@ -813,32 +1077,76 @@ export class HUDScene extends Phaser.Scene {
         }
         y += rowH;
       }
-      if (needsScroll) {
-        const st = this.invText(px + panelW / 2, y, `\u25B2 ${off + 1}\u2013${off + visible.length} of ${total} \u25BC`, COL.dim, szBody);
-        st.setOrigin(0.5, 0); push(st);
-        if (off > 0) {
-          const uz = this.add.zone(px + panelW / 4, y + rowH / 2, panelW / 2, rowH)
-            .setDepth(35).setInteractive({ useHandCursor: true });
-          uz.on('pointerdown', () => { this.scrollOffset = Math.max(0, off - displayRows); this.renderInventory(); });
-          this.clickZones.push(uz);
-        }
-        if (off + displayRows < total) {
-          const dz = this.add.zone(px + 3 * panelW / 4, y + rowH / 2, panelW / 2, rowH)
-            .setDepth(35).setInteractive({ useHandCursor: true });
-          dz.on('pointerdown', () => { this.scrollOffset = off + displayRows; this.renderInventory(); });
-          this.clickZones.push(dz);
+      if (needsScroll) this.renderScrollIndicator(px, y, panelW, off, visible.length, total, displayRows, szBody, push);
+    }
+  }
+
+  private renderStatsTab(px: number, y: number, panelW: number, szBody: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
+    const inv = this.worldScene.inventory;
+    const run = this.worldScene.run;
+    const char = this.worldScene.character;
+    const eqMods = inv.getEquipmentStatModifiers();
+    const lineH = szBody + 4;
+
+    // Class + Level
+    push(this.invText(px + PAD, y, `${char.class.charAt(0).toUpperCase() + char.class.slice(1)}  Lv${char.level}`, COL.title, szBody + 1));
+    y += lineH + 2;
+
+    // XP bar
+    const nextXp = WorldScene.xpForLevel(char.level + 1);
+    push(this.invText(px + PAD, y, `XP: ${char.xp} / ${nextXp}`, COL.dim, szBody));
+    y += lineH;
+
+    // HP / MP
+    push(this.invText(px + PAD, y, `HP: ${run.hp}/${run.maxHp}   MP: ${run.mp}/${run.maxMp}`, COL.text, szBody));
+    y += lineH + 2;
+
+    // Stats breakdown: Base + Equipment = Total
+    push(this.invText(px + PAD, y, 'Stat       Base  Equip  Total', COL.dim, szBody - 1));
+    y += lineH;
+    for (const stat of ['attack', 'defense', 'speed', 'magic'] as const) {
+      const base = run.stats[stat];
+      const eq = eqMods[stat] ?? 0;
+      const total = base + eq;
+      const label = stat.slice(0, 3).toUpperCase().padEnd(10);
+      const eqStr = eq > 0 ? `+${eq}` : eq < 0 ? `${eq}` : ' 0';
+      push(this.invText(px + PAD, y, `${label} ${String(base).padStart(4)}  ${eqStr.padStart(5)}  ${String(total).padStart(5)}`, COL.text, szBody));
+      y += lineH;
+    }
+    y += 4;
+
+    // Learned skills
+    push(this.invText(px + PAD, y, 'Skills:', COL.dim, szBody));
+    y += lineH;
+    if (char.learnedSkills.length === 0) {
+      push(this.invText(px + PAD + 4, y, '(none)', COL.dim, szBody));
+    } else {
+      for (const sid of char.learnedSkills) {
+        const sk = (skillsData as any)[sid];
+        if (sk) {
+          push(this.invText(px + PAD + 4, y, `${sk.name} (${sk.mpCost}MP)`, COL.text, szBody));
+          y += lineH;
         }
       }
     }
+  }
 
-    // Close button at fixed bottom
-    const closeY = py + panelH - PAD - 12;
-    const tc = this.invText(px + panelW / 2, closeY, '[ Close ]', COL.title, this.fs(10));
-    tc.setOrigin(0.5, 0); push(tc);
-    const cz = this.add.zone(px + panelW / 2, closeY + 10, panelW - PAD * 2, 24)
-      .setDepth(35).setInteractive({ useHandCursor: true });
-    cz.on('pointerdown', () => { this.mode = 'idle'; this.scrollOffset = 0; this.clearActions(); this.renderBottomBar(); });
-    this.clickZones.push(cz);
+  private renderScrollIndicator(px: number, y: number, panelW: number, off: number, visibleCount: number, total: number, displayRows: number, szBody: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
+    const st = this.invText(px + panelW / 2, y, `\u25B2 ${off + 1}\u2013${off + visibleCount} of ${total} \u25BC`, COL.dim, szBody);
+    st.setOrigin(0.5, 0); push(st);
+    const rowH = Math.max(szBody + 6, 18);
+    if (off > 0) {
+      const uz = this.add.zone(px + panelW / 4, y + rowH / 2, panelW / 2, rowH)
+        .setDepth(35).setInteractive({ useHandCursor: true });
+      uz.on('pointerdown', () => { this.scrollOffset = Math.max(0, off - displayRows); this.renderInventory(); });
+      this.clickZones.push(uz);
+    }
+    if (off + displayRows < total) {
+      const dz = this.add.zone(px + 3 * panelW / 4, y + rowH / 2, panelW / 2, rowH)
+        .setDepth(35).setInteractive({ useHandCursor: true });
+      dz.on('pointerdown', () => { this.scrollOffset = off + displayRows; this.renderInventory(); });
+      this.clickZones.push(dz);
+    }
   }
 
   private useConsumable(itemId: string): void {
@@ -856,6 +1164,7 @@ export class HUDScene extends Phaser.Scene {
     this.worldScene.inventory.removeItem(itemId);
     this.worldScene.saveRun();
     this.addMessage(`Used ${item.name}.`, '#66dd66');
+    this.autoFillQuickSlots();
     this.renderInventory();
     this.renderStats();
   }
@@ -1022,6 +1331,7 @@ export class HUDScene extends Phaser.Scene {
     AudioManager.getInstance().playItemPickup();
     const item = (itemsData as any)[itemId];
     this.addMessage(`Bought ${item?.name ?? itemId}.`, '#66dd66');
+    this.autoFillQuickSlots();
     this.worldScene.saveRun();
     this.renderShop();
     this.renderStats();
@@ -1035,6 +1345,7 @@ export class HUDScene extends Phaser.Scene {
     AudioManager.getInstance().playSelect();
     const item = (itemsData as any)[itemId];
     this.addMessage(`Sold ${item?.name ?? itemId} for ${sellPrice}g.`, '#ddaa00');
+    this.autoFillQuickSlots();
     this.worldScene.saveRun();
     this.renderShop();
     this.renderStats();
