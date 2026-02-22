@@ -572,6 +572,9 @@ export class WorldScene extends Phaser.Scene {
     this.checkChest();
     this.checkEncounter();
 
+    // Enemy turns: visible/alert enemies move toward the player
+    if (this.processEnemyTurns()) return;
+
     // HP/MP regen: restore 1 HP and 1 MP every 8 steps
     if (this.run.stepCount % 8 === 0) {
       let healed = false;
@@ -886,6 +889,104 @@ export class WorldScene extends Phaser.Scene {
     for (const enemy of this.mapEnemies) {
       enemy.setVisible(this.fog.getVisibility(enemy.gridX, enemy.gridY) === Visibility.VISIBLE);
     }
+  }
+
+  // ====== Enemy AI turns (map movement) ======
+
+  /**
+   * After each player step, every visible/alert enemy takes one step toward the player.
+   * If an enemy reaches adjacent tile it initiates combat.
+   * Returns true if combat was triggered.
+   */
+  private processEnemyTurns(): boolean {
+    const px = this.player.gridX;
+    const py = this.player.gridY;
+    // Collect enemies that should act this turn
+    const acting: Enemy[] = [];
+    for (const e of this.mapEnemies) {
+      const vis = this.fog.getVisibility(e.gridX, e.gridY);
+      if (vis === Visibility.VISIBLE) {
+        e.alert = true;
+        e.alertTurns = 5; // remember player for 5 turns after losing sight
+      } else if (e.alert) {
+        e.alertTurns--;
+        if (e.alertTurns <= 0) { e.alert = false; continue; }
+      }
+      if (e.alert) acting.push(e);
+    }
+    // Sort by distance (closest first) so closer enemies move first
+    acting.sort((a, b) => {
+      const da = Math.abs(a.gridX - px) + Math.abs(a.gridY - py);
+      const db = Math.abs(b.gridX - px) + Math.abs(b.gridY - py);
+      return da - db;
+    });
+
+    // Set of occupied tiles this turn (player + NPCs + all enemies current pos)
+    const occupied = new Set<number>();
+    occupied.add(py * 10000 + px); // player tile
+    for (const n of this.npcs) occupied.add(n.gridY * 10000 + n.gridX);
+    for (const e of this.mapEnemies) occupied.add(e.gridY * 10000 + e.gridX);
+
+    let combatTriggered = false;
+    for (const enemy of acting) {
+      const dist = Math.abs(enemy.gridX - px) + Math.abs(enemy.gridY - py);
+      // Already adjacent or on player — engage!
+      if (dist <= 1) {
+        this.engageEnemy(enemy);
+        combatTriggered = true;
+        break;
+      }
+      // Find best step toward player (4-directional)
+      const step = this.enemyBestStep(enemy, px, py, occupied);
+      if (step) {
+        // Update occupied set
+        occupied.delete(enemy.gridY * 10000 + enemy.gridX);
+        enemy.moveTo(step.x, step.y);
+        occupied.add(step.y * 10000 + step.x);
+        // After moving, check if now adjacent
+        const newDist = Math.abs(step.x - px) + Math.abs(step.y - py);
+        if (newDist <= 1) {
+          this.engageEnemy(enemy);
+          combatTriggered = true;
+          break;
+        }
+      }
+    }
+    // Update visibility after enemies move
+    this.updateEnemyVisibility();
+    return combatTriggered;
+  }
+
+  /**
+   * Simple greedy step: pick the cardinal neighbor that's closest to the player,
+   * walkable, and not occupied by another entity.
+   */
+  private enemyBestStep(
+    enemy: Enemy, px: number, py: number, occupied: Set<number>,
+  ): { x: number; y: number } | null {
+    const dirs = [{ x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
+    let best: { x: number; y: number } | null = null;
+    let bestDist = Math.abs(enemy.gridX - px) + Math.abs(enemy.gridY - py);
+    for (const d of dirs) {
+      const nx = enemy.gridX + d.x;
+      const ny = enemy.gridY + d.y;
+      if (!this.isBaseTileWalkable(nx, ny)) continue;
+      const nk = ny * 10000 + nx;
+      if (occupied.has(nk)) continue;
+      const dist = Math.abs(nx - px) + Math.abs(ny - py);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { x: nx, y: ny };
+      }
+    }
+    return best;
+  }
+
+  /** Tile walkability check without entity blocking (for enemy pathfinding). */
+  private isBaseTileWalkable(gx: number, gy: number): boolean {
+    if (gx < 0 || gy < 0 || gy >= this.mapH || gx >= this.mapW) return false;
+    const t = this.currentTiles[gy]?.[gx];
+    return t !== undefined && !SOLID.has(t);
   }
 
   private engageEnemy(enemy: Enemy): void {
