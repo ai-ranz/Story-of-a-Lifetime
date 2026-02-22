@@ -299,24 +299,22 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
 
-      // Clicked a map enemy? Walk to it (contact triggers combat via doMove)
+      // Clicked a map enemy? Engage like NPCs — adjacent = immediate, far = pathfind
       const enemy = this.mapEnemies.find(e => e.gridX === gx && e.gridY === gy && e.visible);
       if (enemy) {
-        // If already on the same tile, engage immediately
-        if (this.player.gridX === gx && this.player.gridY === gy) {
-          this.checkEnemyContact();
+        const dist = Math.abs(this.player.gridX - gx) + Math.abs(this.player.gridY - gy);
+        if (dist <= 1) {
+          // Adjacent or same tile — engage immediately
+          this.player.facing = { x: gx - this.player.gridX, y: gy - this.player.gridY };
+          this.engageEnemy(enemy);
           return;
         }
-        // Path directly to the enemy's tile — doMove/checkEnemyContact handles combat
-        const path = this.findPath(this.player.gridX, this.player.gridY, gx, gy);
-        if (path.length > 0) {
-          this.movePath = path;
-        } else {
-          // Can't path directly, try walking to adjacent tile
-          const adj = this.findAdjacentWalkable(gx, gy);
-          if (adj) {
-            const altPath = this.findPath(this.player.gridX, this.player.gridY, adj.x, adj.y);
-            if (altPath.length > 0) this.movePath = [...altPath, { x: gx, y: gy }];
+        // Far away — pathfind to adjacent tile, enemy pos as sentinel
+        const adj = this.findAdjacentWalkable(gx, gy);
+        if (adj) {
+          const path = this.findPath(this.player.gridX, this.player.gridY, adj.x, adj.y);
+          if (path.length > 0) {
+            this.movePath = [...path, { x: gx, y: gy }]; // enemy pos = sentinel
           }
         }
         return;
@@ -345,6 +343,13 @@ export class WorldScene extends Phaser.Scene {
         this.movePath = [];
         this.player.facing = { x: next.x - this.player.gridX, y: next.y - this.player.gridY };
         this.interactWith(npc);
+        return;
+      }
+      const enemy = this.mapEnemies.find(e => e.gridX === next.x && e.gridY === next.y && e.visible);
+      if (enemy) {
+        this.movePath = [];
+        this.player.facing = { x: next.x - this.player.gridX, y: next.y - this.player.gridY };
+        this.engageEnemy(enemy);
         return;
       }
       this.movePath.shift();
@@ -448,10 +453,11 @@ export class WorldScene extends Phaser.Scene {
     const cd = (classesData as any)[this.character.class];
     this.player = EntityFactory.createPlayer(this, sx, sy, cd.spriteKey);
     this.npcs = EntityFactory.createNPCsForMap(this, mapId);
-    for (const n of this.npcs) n.setInteractive();
+    for (const n of this.npcs) n.setInteractive({ useHandCursor: true });
     // Spawn visible enemies
     const defeated = this.run.defeatedEnemies?.[mapId] ?? [];
     this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, null, def.tiles, defeated);
+    for (const e of this.mapEnemies) e.setInteractive({ useHandCursor: true });
   }
 
   private loadProcedural(mapId: string, cm: any, sx: number, sy: number): void {
@@ -479,6 +485,7 @@ export class WorldScene extends Phaser.Scene {
     // Spawn visible enemies in dungeon rooms
     const defeated = this.run.defeatedEnemies?.[mapId] ?? [];
     this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, this.dungeonMap, tiles, defeated);
+    for (const e of this.mapEnemies) e.setInteractive({ useHandCursor: true });
   }
 
   private buildTilemap(tiles: number[][], w: number, h: number): void {
@@ -871,27 +878,22 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private checkEnemyContact(): boolean {
-    const px = this.player.gridX;
-    const py = this.player.gridY;
-    const enemy = this.mapEnemies.find(e => e.gridX === px && e.gridY === py);
-    if (!enemy) return false;
-
-    // Store the contacted enemy so we can remove it on victory
+  private engageEnemy(enemy: Enemy): void {
     this.contactEnemy = enemy;
     this.movePath = [];
-
-    // Build combat data from the enemy id
     const d = (enemiesData as any)[enemy.enemyId];
-    if (!d) return false;
-
-    // Sometimes bring a friend (30% chance of a second enemy of same type)
+    if (!d) return;
     const foes = [{ ...d, id: enemy.enemyId }];
     if (rollFloat() < 0.3) {
       foes.push({ ...d, id: enemy.enemyId });
     }
-
     this.panel()?.startCombat(foes, false);
+  }
+
+  private checkEnemyContact(): boolean {
+    const enemy = this.mapEnemies.find(e => e.gridX === this.player.gridX && e.gridY === this.player.gridY);
+    if (!enemy) return false;
+    this.engageEnemy(enemy);
     return true;
   }
 
