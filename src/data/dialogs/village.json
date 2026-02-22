@@ -57,7 +57,19 @@
     "nodes": {
       "start": {
         "speaker": "Elder Thom",
-        "text": "You did it! The goblin chief is no more. The village owes you everything, hero. Rest well — you've earned it.",
+        "text": "You did it! The goblin chief is no more! The tunnels are safe once again.",
+        "next": "reward"
+      },
+      "reward": {
+        "speaker": "Elder Thom",
+        "text": "The village owes you everything, hero. Take this — 50 gold, the least we can offer for your bravery.",
+        "action": "addGold:50",
+        "next": "farewell"
+      },
+      "farewell": {
+        "speaker": "Elder Thom",
+        "text": "Rest well, champion. Your name will be remembered in Briarwood for generations to come.",
+        "action": "chapterComplete",
         "next": null
       }
     }
@@ -145,6 +157,42 @@
       }
     }
   },
+  "shopkeeper_intro_forest": {
+    "id": "shopkeeper_intro_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Brynn",
+        "text": "Heading into the Whispering Woods? Stock up on potions — you'll need them.",
+        "choices": [
+          { "text": "Good idea.", "next": "shop", "action": "openShop" },
+          { "text": "I'm fine for now.", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Brynn",
+        "text": "A few health potions can mean the difference between life and death out there!",
+        "next": null
+      }
+    }
+  },
+  "shopkeeper_intro_hero": {
+    "id": "shopkeeper_intro_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Brynn",
+        "text": "The hero of Briarwood! Business has been booming since the goblin threat ended. Anything you need — on the house! Well, almost.",
+        "choices": [
+          { "text": "Let me browse.", "next": "shop", "action": "openShop" },
+          { "text": "Just saying hello!", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Brynn",
+        "text": "Take your pick, champion!",
+        "next": null
+      }
+    }
+  },
   "kael_encouragement": {
     "id": "kael_encouragement",
     "nodes": {
@@ -194,6 +242,400 @@
       "start": {
         "speaker": "Kael",
         "text": "You beat the goblin chief!! Everyone's talking about it! You're a legend! Can I tell everyone we're best friends?",
+        "next": null
+      }
+    }
+  },
+
+  "martha_inn": {
+    "id": "martha_inn",
+    "nodes": {
+      "start": {
+        "speaker": "Martha",
+        "text": "Welcome to the Hearthstone Inn, dear! You look like you could use a rest.",
+        "choices": [
+          { "text": "I'd like to rest.", "next": "rest" },
+          { "text": "Any news?", "next": "gossip" },
+          { "text": "Just passing through.", "next": null }
+        ]
+      },
+      "rest": {
+        "speaker": "Martha",
+        "text": "Sit by the fire. Let me bring you something warm. ...There. Good as new!",
+        "action": "heal",
+        "next": null
+      },
+      "gossip": {
+        "speaker": "Martha",
+        "text": "The Elder's been worried about the forest. Strange sounds at night. Be careful out there.",
+        "next": null
+      }
+    }
+  },
+  "martha_inn_forest": {
+    "id": "martha_inn_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Martha",
+        "text": "Back from the woods? You look rough. Come, rest a while.",
+        "choices": [
+          { "text": "Yes, please.", "next": "rest" },
+          { "text": "What have you heard?", "next": "gossip" },
+          { "text": "No time, thanks.", "next": null }
+        ]
+      },
+      "rest": {
+        "speaker": "Martha",
+        "text": "A hot meal and a good rest will fix you right up. ...There we go.",
+        "action": "heal",
+        "next": null
+      },
+      "gossip": {
+        "speaker": "Martha",
+        "text": "Merchants can't get through the forest anymore. Wolves and worse on the paths.",
+        "next": null
+      }
+    }
+  },
+  "martha_inn_cave": {
+    "id": "martha_inn_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Martha",
+        "text": "Saints preserve us — you've been in the caves? Sit down this instant!",
+        "choices": [
+          { "text": "A rest would be nice.", "next": "rest" },
+          { "text": "Tell me what you know.", "next": "gossip" },
+          { "text": "I'm fine, really.", "next": null }
+        ]
+      },
+      "rest": {
+        "speaker": "Martha",
+        "text": "Don't you move until you've had a full meal. ...There. Promise me you'll be careful.",
+        "action": "heal",
+        "next": null
+      },
+      "gossip": {
+        "speaker": "Martha",
+        "text": "Old Hob says his grandfather spoke of tunnels beneath the hills. They go deep, much deeper than anyone remembers.",
+        "next": null
+      }
+    }
+  },
+  "martha_inn_hero": {
+    "id": "martha_inn_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Martha",
+        "text": "The hero of the hour! Drinks are on the house tonight. Rest as long as you like, dear!",
+        "action": "heal",
+        "next": null
+      }
+    }
+  },
+
+  "gareth_blacksmith": {
+    "id": "gareth_blacksmith",
+    "nodes": {
+      "start": {
+        "speaker": "Gareth",
+        "text": "Forge's cold. Can't get ore shipments through with goblins on the roads. Come back when things improve.",
+        "next": null
+      }
+    }
+  },
+  "gareth_blacksmith_forest": {
+    "id": "gareth_blacksmith_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Gareth",
+        "text": "You've been to the forest? Roads are still blocked. Nothing I can do without supplies.",
+        "next": null
+      }
+    }
+  },
+  "gareth_blacksmith_cave": {
+    "id": "gareth_blacksmith_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Gareth",
+        "text": "Into the caves, eh? Some of those old tunnels had iron veins. Bring me anything interesting you find.",
+        "next": null
+      }
+    }
+  },
+  "gareth_blacksmith_journal_deciphered": {
+    "id": "gareth_blacksmith_journal_deciphered",
+    "nodes": {
+      "start": {
+        "speaker": "Gareth",
+        "text": "News of that old journal brought some merchants back! I've managed a small ore shipment. The forge is hot again!",
+        "choices": [
+          { "text": "Show me your wares.", "next": "shop", "action": "openShop:gareth_forge" },
+          { "text": "Good to hear. Maybe later.", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Gareth",
+        "text": "Only the best for someone brave enough to face the caves!",
+        "next": null
+      }
+    }
+  },
+  "gareth_blacksmith_hero": {
+    "id": "gareth_blacksmith_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Gareth",
+        "text": "Trade routes are opening up! The forge hasn't been this busy in months. Take a look, hero!",
+        "choices": [
+          { "text": "Show me your wares.", "next": "shop", "action": "openShop:gareth_forge" },
+          { "text": "Maybe later.", "next": null }
+        ]
+      },
+      "shop": {
+        "speaker": "Gareth",
+        "text": "Only the finest steel for the village hero!",
+        "next": null
+      }
+    }
+  },
+
+  "elara_chapel": {
+    "id": "elara_chapel",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "May the old gods guide you, child. I tend the chapel and its ancient records.",
+        "choices": [
+          { "text": "Tell me about the chapel.", "next": "lore" },
+          { "text": "Farewell.", "next": null }
+        ]
+      },
+      "lore": {
+        "speaker": "Sister Elara",
+        "text": "This chapel was built long before the village. The stones carry inscriptions in a tongue older than ours. I spend my days trying to decipher them.",
+        "next": null
+      }
+    }
+  },
+  "elara_chapel_forest": {
+    "id": "elara_chapel_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "The forest grows restless. I've been praying for the safety of all who venture there.",
+        "next": null
+      }
+    }
+  },
+  "elara_chapel_cave": {
+    "id": "elara_chapel_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "The caves hold ancient things. If you find anything with strange markings, bring it to me. I may be able to read them.",
+        "next": null
+      }
+    }
+  },
+  "elara_chapel_found_banner": {
+    "id": "elara_chapel_found_banner",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "What's this? Those symbols on that banner... I've seen similar markings in the chapel records!",
+        "choices": [
+          { "text": "Can you decipher them?", "next": "decipher" },
+          { "text": "I found it in the caves.", "next": "decipher" }
+        ]
+      },
+      "decipher": {
+        "speaker": "Sister Elara",
+        "text": "Give me a moment... Yes! These are old warding glyphs. The goblin chief uses this magic to seal his deepest chamber. Now that I understand the pattern, I can teach you to break through.",
+        "action": "removeItem:goblin_war_banner",
+        "next": "done"
+      },
+      "done": {
+        "speaker": "Sister Elara",
+        "text": "The knowledge is in your mind now. Take this old healing tome as well — the arts within may save your life down there.",
+        "action": "setFlag:banner_deciphered",
+        "next": "gift"
+      },
+      "gift": {
+        "speaker": "Sister Elara",
+        "text": "May the old gods protect you. The barrier will yield, and whatever lies beyond... end it.",
+        "action": "giveItem:healers_tome",
+        "next": null
+      }
+    }
+  },
+  "elara_chapel_banner_deciphered": {
+    "id": "elara_chapel_banner_deciphered",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "The wards will yield to you now. Go with the blessing of the old gods, and end what lurks in the deepest chamber.",
+        "next": null
+      }
+    }
+  },
+  "elara_chapel_hero": {
+    "id": "elara_chapel_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Sister Elara",
+        "text": "The dark magic has lifted! I could feel it from here — like a weight removed from the world. You have done a great thing.",
+        "next": null
+      }
+    }
+  },
+
+  "hob_farmer": {
+    "id": "hob_farmer",
+    "nodes": {
+      "start": {
+        "speaker": "Farmer Hob",
+        "text": "Fields have gone to seed with all these goblin raids. Too old to fight, but I keep watch.",
+        "choices": [
+          { "text": "Seen anything?", "next": "watch" },
+          { "text": "Take care, old man.", "next": null }
+        ]
+      },
+      "watch": {
+        "speaker": "Farmer Hob",
+        "text": "Tracks near the tree line at dawn. Something's emboldened the beasts. Started long before the goblins, if you ask me.",
+        "next": null
+      }
+    }
+  },
+  "hob_farmer_forest": {
+    "id": "hob_farmer_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Farmer Hob",
+        "text": "Wolves are getting bolder. Found tracks near my fence this morning. Watch yourself in those woods.",
+        "next": null
+      }
+    }
+  },
+  "hob_farmer_cave": {
+    "id": "hob_farmer_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Farmer Hob",
+        "text": "You went into the caves? My grandfather told stories about those tunnels. Said they're older than the village itself.",
+        "next": null
+      }
+    }
+  },
+  "hob_farmer_hero": {
+    "id": "hob_farmer_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Farmer Hob",
+        "text": "Crops'll grow better now. I can feel it in the soil. Thank you, hero.",
+        "next": null
+      }
+    }
+  },
+
+  "mira_kid": {
+    "id": "mira_kid",
+    "nodes": {
+      "start": {
+        "speaker": "Mira",
+        "text": "Wow, you're the one going on an adventure?! That's SO cool! I wanna be a hero too!",
+        "choices": [
+          { "text": "Maybe one day!", "next": "encourage" },
+          { "text": "It's dangerous...", "next": "dismiss" }
+        ]
+      },
+      "encourage": {
+        "speaker": "Mira",
+        "text": "I'm gonna practice sword fighting every day! ...With a stick! But still!",
+        "next": null
+      },
+      "dismiss": {
+        "speaker": "Mira",
+        "text": "I KNOW! That's what makes it exciting! Bring me back something cool, okay?",
+        "next": null
+      }
+    }
+  },
+  "mira_kid_forest": {
+    "id": "mira_kid_forest",
+    "nodes": {
+      "start": {
+        "speaker": "Mira",
+        "text": "Did you see any wolves?! Were they scary?! I bet you were SO brave!",
+        "next": null
+      }
+    }
+  },
+  "mira_kid_cave": {
+    "id": "mira_kid_cave",
+    "nodes": {
+      "start": {
+        "speaker": "Mira",
+        "text": "You went in a CAVE?! With GOBLINS?! That's the coolest thing EVER! ...Here, I found this shiny rock. You can have it for luck!",
+        "action": "addGold:5",
+        "next": null
+      }
+    }
+  },
+  "mira_kid_hero": {
+    "id": "mira_kid_hero",
+    "nodes": {
+      "start": {
+        "speaker": "Mira",
+        "text": "YOU DID IT!! I KNEW you would! I'm telling EVERYONE! You're my favorite hero in the whole world!",
+        "next": null
+      }
+    }
+  },
+
+  "elder_greetings_found_journal": {
+    "id": "elder_greetings_found_journal",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "Is that... a journal from the caves? Let me see! These pages are ancient, but I recognize the hand...",
+        "choices": [
+          { "text": "What does it say?", "next": "decipher" },
+          { "text": "I found it in the caves.", "next": "decipher" }
+        ]
+      },
+      "decipher": {
+        "speaker": "Elder Thom",
+        "text": "This was written by a scholar who explored the caves long ago. It describes the goblin chief's lair — sealed by enchanted war banners deep within.",
+        "action": "removeItem:tattered_journal",
+        "next": "done"
+      },
+      "done": {
+        "speaker": "Elder Thom",
+        "text": "Find the war banner on the deeper floors. Take it to Sister Elara at the chapel — she studies the ancient texts and may know how to break the wards.",
+        "action": "setFlag:journal_deciphered",
+        "next": null
+      }
+    }
+  },
+  "elder_greetings_journal_deciphered": {
+    "id": "elder_greetings_journal_deciphered",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "Have you found the goblin war banner yet? Sister Elara at the chapel is the one who can unravel its magic. Search the deeper cave floors.",
+        "next": null
+      }
+    }
+  },
+  "elder_greetings_banner_deciphered": {
+    "id": "elder_greetings_banner_deciphered",
+    "nodes": {
+      "start": {
+        "speaker": "Elder Thom",
+        "text": "Sister Elara has broken the wards! The path to the goblin chief lies open. End this threat once and for all. The village is counting on you.",
         "next": null
       }
     }

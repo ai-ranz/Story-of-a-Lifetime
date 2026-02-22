@@ -9,8 +9,10 @@ import { AudioManager } from '../systems/AudioManager';
 import skillsData from '../data/skills.json';
 import itemsData from '../data/items.json';
 import dialogData from '../data/dialogs/village.json';
+import shopsData from '../data/shops.json';
+import questsData from '../data/quests.json';
 
-type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory' | 'shop';
+type PanelMode = 'idle' | 'dialog' | 'combat' | 'inventory' | 'shop' | 'travel';
 
 const PAD = 8;
 const TOP_H = 26;      // top stats bar height
@@ -62,7 +64,8 @@ export class HUDScene extends Phaser.Scene {
   private combatSubmenu: null | 'skills' | 'items' = null;
   private buffZones: Phaser.GameObjects.Zone[] = [];
   private quickSlots: (string | null)[] = [null, null, null];
-  private invTab: 'equip' | 'items' | 'stats' = 'equip';
+  private invTab: 'equip' | 'items' | 'stats' | 'quest' = 'equip';
+  private currentShopId = 'brynn_shop';
 
   // Persistent log for review
   private messageLog: { text: string; color: string }[] = [];
@@ -174,7 +177,53 @@ export class HUDScene extends Phaser.Scene {
   }
 
   showInventory(): void { this.mode = 'inventory'; this.scrollOffset = 0; this.invTab = 'equip'; this.renderInventory(); }
-  showShop(): void { this.endDialog(); this.mode = 'shop'; this.scrollOffset = 0; this.shopTab = 'buy'; this.renderShop(); }
+  showShop(shopId?: string): void { this.endDialog(); this.currentShopId = shopId || 'brynn_shop'; this.mode = 'shop'; this.scrollOffset = 0; this.shopTab = 'buy'; this.renderShop(); }
+
+  showFastTravel(): void {
+    this.mode = 'travel';
+    this.clearActions();
+    const waypoints = this.worldScene.getDiscoveredWaypoints();
+
+    this.overlayBg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COL.overlay, 0.7).setDepth(30);
+    this.actionObjs.push(this.overlayBg);
+
+    const panelW = 260, panelH = 40 + waypoints.length * 28 + 36;
+    const px = (GAME_WIDTH - panelW) / 2;
+    const py = (GAME_HEIGHT - panelH) / 2;
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
+
+    const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
+    const szBody = this.fs(10);
+    const rowH = 28;
+    let y = py + PAD;
+
+    push(this.invText(px + PAD, y, 'FAST TRAVEL', COL.title, this.fs(11)));
+    y += this.fs(11) + 10;
+
+    for (const wp of waypoints) {
+      push(this.invText(px + PAD + 4, y, `> ${wp.name}`, COL.text, szBody));
+      const id = wp.id;
+      const z = this.add.zone(px + panelW / 2, y + rowH / 2, panelW - PAD * 2, rowH)
+        .setDepth(35).setInteractive({ useHandCursor: true });
+      z.on('pointerdown', () => {
+        this.mode = 'idle';
+        this.clearActions();
+        this.renderBottomBar();
+        this.worldScene.fastTravelTo(id);
+      });
+      this.clickZones.push(z);
+      y += rowH;
+    }
+
+    y += 4;
+    const tc = this.invText(px + panelW / 2, y, '[ Cancel ]', COL.title, this.fs(10));
+    tc.setOrigin(0.5, 0); push(tc);
+    const cz = this.add.zone(px + panelW / 2, y + 10, panelW - PAD * 2, 24)
+      .setDepth(35).setInteractive({ useHandCursor: true });
+    cz.on('pointerdown', () => { this.mode = 'idle'; this.clearActions(); this.renderBottomBar(); });
+    this.clickZones.push(cz);
+  }
 
   // ══════════════════════════════════════
   //  QUICK SLOTS
@@ -284,7 +333,17 @@ export class HUDScene extends Phaser.Scene {
 
     if (run.dungeonFloor > 0) {
       const floorTxt = this.mkText(0, cy, `F${run.dungeonFloor}`, COL.dim, this.fs(8));
-      rx -= floorTxt.width; floorTxt.setX(rx); this.statsObjs.push(floorTxt);
+      rx -= floorTxt.width; floorTxt.setX(rx); this.statsObjs.push(floorTxt); rx -= 6;
+    }
+
+    const LOC_NAMES: Record<string, string> = {
+      village: 'Village', forest: 'Woods',
+      cave_floor1: 'Cave', cave_floor2: 'Cave', cave_floor3: 'Cave', cave_boss: 'Boss Lair',
+    };
+    const locName = LOC_NAMES[run.currentMap] || '';
+    if (locName) {
+      const locTxt = this.mkText(0, cy, locName, 0x88aacc, this.fs(8));
+      rx -= locTxt.width; locTxt.setX(rx); this.statsObjs.push(locTxt);
     }
 
     if (this.minimapVisible && this.mode === 'idle') this.renderMinimap();
@@ -504,6 +563,10 @@ export class HUDScene extends Phaser.Scene {
       else this.renderStats();
       this.renderBottomBar();
     });
+    const waypoints = this.worldScene.getDiscoveredWaypoints();
+    if (waypoints.length > 0) {
+      bx = this.addButton(bx + 12, y + 4, 'Travel', COL.dim, () => this.showFastTravel());
+    }
 
     // Mute toggle (right-aligned)
     const audio = AudioManager.getInstance();
@@ -949,10 +1012,11 @@ export class HUDScene extends Phaser.Scene {
     y += this.fs(11) + 6;
 
     // Tab buttons
-    const tabs: { key: 'equip' | 'items' | 'stats'; label: string }[] = [
+    const tabs: { key: 'equip' | 'items' | 'stats' | 'quest'; label: string }[] = [
       { key: 'equip', label: 'Equip' },
       { key: 'items', label: 'Items' },
       { key: 'stats', label: 'Stats' },
+      { key: 'quest', label: 'Quest' },
     ];
     let tabX = px + PAD;
     for (const tab of tabs) {
@@ -982,6 +1046,8 @@ export class HUDScene extends Phaser.Scene {
       this.renderEquipTab(px, y, panelW, rowH, szBody, maxRows, push);
     } else if (this.invTab === 'items') {
       this.renderItemsTab(px, y, panelW, rowH, szBody, maxRows, push);
+    } else if (this.invTab === 'quest') {
+      this.renderQuestsTab(px, y, panelW, rowH, szBody, push);
     } else {
       this.renderStatsTab(px, y, panelW, szBody, push);
     }
@@ -1101,6 +1167,24 @@ export class HUDScene extends Phaser.Scene {
     }
   }
 
+  private renderQuestsTab(px: number, y: number, panelW: number, rowH: number, szBody: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
+    const quests = this.worldScene.quests;
+    const lineH = szBody + 4;
+    for (const [, quest] of Object.entries(questsData as Record<string, { title: string; objectives: { text: string; flag: string; type: string }[] }>)) {
+      push(this.invText(px + PAD, y, quest.title, COL.title, szBody));
+      y += lineH;
+      for (const obj of quest.objectives) {
+        const done = obj.type === 'quest' ? !!quests.getQuestFlag(obj.flag) : !!quests.getStoryFlag(obj.flag);
+        const prefix = done ? '\u2713' : '\u25CB';
+        const color = done ? 0x66dd66 : COL.dim;
+        push(this.invText(px + PAD + 8, y, `${prefix} ${obj.text}`, color, szBody));
+        y += lineH;
+        if (!done) break;
+      }
+      y += 4;
+    }
+  }
+
   private renderStatsTab(px: number, y: number, panelW: number, szBody: number, push: (o: Phaser.GameObjects.GameObject) => void): void {
     const inv = this.worldScene.inventory;
     const run = this.worldScene.run;
@@ -1193,13 +1277,15 @@ export class HUDScene extends Phaser.Scene {
   //  SHOP
   // ══════════════════════════════════════
 
-  private static readonly SHOP_STOCK = [
-    'health_potion', 'mana_potion', 'antidote', 'bomb', 'herb',
-    'wooden_sword', 'short_sword', 'iron_sword',
-    'apprentice_staff', 'frost_wand', 'shadow_dagger',
-    'leather_armor', 'chain_mail',
-    'speed_ring', 'magic_ring',
-  ];
+  private getShopStock(): string[] {
+    const shop = (shopsData as any)[this.currentShopId];
+    return shop?.stock ?? [];
+  }
+
+  private getShopName(): string {
+    const shop = (shopsData as any)[this.currentShopId];
+    return shop?.name ?? 'SHOP';
+  }
 
   private renderShop(): void {
     this.clearActions();
@@ -1220,7 +1306,7 @@ export class HUDScene extends Phaser.Scene {
     let y = py + PAD;
 
     // Title + gold
-    push(this.invText(px + PAD, y, 'SHOP', COL.title, this.fs(11)));
+    push(this.invText(px + PAD, y, this.getShopName(), COL.title, this.fs(11)));
     const gt = this.invText(px + panelW - PAD, y, `${inv.gold}g`, COL.gold, this.fs(11));
     gt.setOrigin(1, 0); push(gt);
     y += this.fs(11) + 6;
@@ -1249,7 +1335,7 @@ export class HUDScene extends Phaser.Scene {
 
     if (this.shopTab === 'buy') {
       const buyItems: { id: string; item: any }[] = [];
-      for (const itemId of HUDScene.SHOP_STOCK) {
+      for (const itemId of this.getShopStock()) {
         const item = (itemsData as any)[itemId];
         if (item) buyItems.push({ id: itemId, item });
       }

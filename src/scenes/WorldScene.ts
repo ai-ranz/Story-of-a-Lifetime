@@ -201,6 +201,21 @@ const STATIC_MAPS: Record<string, StaticMapDef> = {
   cave_boss: { width: 55, height: 40, tiles: generateBossRoom(), exits: [{ x: 27, y: 39, target: 'cave_floor3', tx: -1, ty: -1 }] },
 };
 
+const FAST_TRAVEL: Record<string, { name: string; map: string; x: number; y: number }> = {
+  village: { name: 'Village', map: 'village', x: 35, y: 25 },
+  forest: { name: 'Whispering Woods', map: 'forest', x: 1, y: 25 },
+  cave: { name: 'Cave Entrance', map: 'cave_floor1', x: -1, y: -1 },
+};
+
+const MAP_TO_WAYPOINT: Record<string, string> = {
+  village: 'village',
+  forest: 'forest',
+  cave_floor1: 'cave',
+  cave_floor2: 'cave',
+  cave_floor3: 'cave',
+  cave_boss: 'cave',
+};
+
 export class WorldScene extends Phaser.Scene {
   player!: Player;
   npcs: NPC[] = [];
@@ -228,6 +243,7 @@ export class WorldScene extends Phaser.Scene {
   private enterKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
   private movePath: { x: number; y: number }[] = [];
+  private questChests = new Map<string, { itemId: string; flag: string; message: string }>();
   inputManager!: InputManager;
   busy = false;
 
@@ -236,6 +252,7 @@ export class WorldScene extends Phaser.Scene {
   init(): void {
     this.character = SaveSystem.loadCharacter()!;
     this.run = SaveSystem.loadRun()!;
+    if (!this.run.waypoints) this.run.waypoints = [];
     this.inventory = new InventorySystem();
     this.inventory.deserialize({ items: this.run.inventory, equipment: this.run.equipment, gold: this.run.gold });
     this.quests = new QuestSystem();
@@ -408,7 +425,14 @@ export class WorldScene extends Phaser.Scene {
     this.currentMapId = mapId;
     this.stepsSinceEncounter = 0;
     this.movePath = [];
+    this.questChests.clear();
     if (!this.run.defeatedEnemies) this.run.defeatedEnemies = {};
+
+    // Discover fast-travel waypoint for this map
+    const wpKey = MAP_TO_WAYPOINT[mapId];
+    if (wpKey && !this.run.waypoints.includes(wpKey)) {
+      this.run.waypoints.push(wpKey);
+    }
 
     // Set story flags for quest-reactive dialogs
     if (mapId === 'forest') this.quests.setStoryFlag('entered_forest');
@@ -441,6 +465,32 @@ export class WorldScene extends Phaser.Scene {
     else if (mapId.startsWith('cave')) audio.startAmbient('cave');
     else if (mapId === 'forest') audio.startAmbient('forest');
     else audio.startAmbient('village');
+
+    // Floor transition events (atmospheric text on first entry)
+    if (mapId === 'cave_floor1' && !this.quests.getStoryFlag('first_cave_entry')) {
+      this.quests.setStoryFlag('first_cave_entry');
+      this.time.delayedCall(500, () => this.panel()?.addMessage('The air turns cold. Scratching echoes from deep below...', '#8888cc'));
+    }
+    if (mapId === 'cave_floor2' && !this.quests.getStoryFlag('entered_cave_f2')) {
+      this.quests.setStoryFlag('entered_cave_f2');
+      this.time.delayedCall(500, () => this.panel()?.addMessage('The tunnels narrow. Goblin war drums echo ahead...', '#8888cc'));
+    }
+    if (mapId === 'cave_floor3' && !this.quests.getStoryFlag('entered_cave_f3')) {
+      this.quests.setStoryFlag('entered_cave_f3');
+      this.time.delayedCall(500, () => this.panel()?.addMessage('The stench of rot grows stronger. Something powerful lurks below...', '#8888cc'));
+    }
+
+    // Boss room auto-trigger
+    if (mapId === 'cave_boss' && !this.quests.getQuestFlag('boss_defeated')) {
+      this.busy = true;
+      this.time.delayedCall(600, () => this.panel()?.addMessage('The barrier dissolves as you descend...', '#cc88ff'));
+      this.time.delayedCall(2200, () => this.panel()?.addMessage('"You dare enter MY domain?!"', '#ff6644'));
+      this.time.delayedCall(4000, () => this.panel()?.addMessage('"No one leaves these halls alive!"', '#ff6644'));
+      this.time.delayedCall(6000, () => {
+        this.busy = false;
+        this.startBossCombat('goblin_chief');
+      });
+    }
   }
 
   private loadStatic(mapId: string, sx: number, sy: number): void {
@@ -499,6 +549,29 @@ export class WorldScene extends Phaser.Scene {
     const defeated = this.run.defeatedEnemies?.[mapId] ?? [];
     this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, this.dungeonMap, tiles, defeated);
     for (const e of this.mapEnemies) e.setInteractive({ useHandCursor: true });
+
+    // Place quest items in specific dungeon chests
+    const midRooms = this.dungeonMap.rooms.slice(1, this.dungeonMap.rooms.length - 1);
+    const roomCenter = (r: { x: number; y: number; w: number; h: number }) =>
+      `${Math.floor(r.x + r.w / 2)},${Math.floor(r.y + r.h / 2)}`;
+    if (mapId === 'cave_floor1' && !this.quests.getStoryFlag('found_journal') && midRooms.length > 0) {
+      this.questChests.set(roomCenter(midRooms[0]), {
+        itemId: 'tattered_journal', flag: 'found_journal',
+        message: 'Found a Tattered Journal! The faded pages describe organized goblin patrols and mention a powerful leader deeper in the caves.',
+      });
+    }
+    if (mapId === 'cave_floor2' && !this.quests.getStoryFlag('read_cave_warning') && midRooms.length > 0) {
+      this.questChests.set(roomCenter(midRooms[midRooms.length - 1]), {
+        itemId: '', flag: 'read_cave_warning',
+        message: 'Scrawled on the wall: "The chief commands from below. His banner holds dark power. Do not face him unprepared..."',
+      });
+    }
+    if (mapId === 'cave_floor3' && !this.quests.getStoryFlag('found_banner') && midRooms.length > 0) {
+      this.questChests.set(roomCenter(midRooms[midRooms.length - 1]), {
+        itemId: 'goblin_war_banner', flag: 'found_banner',
+        message: 'Found a Goblin War Banner! Strange glowing symbols cover the tattered fabric. It pulses with dark energy.',
+      });
+    }
   }
 
   private buildTilemap(tiles: number[][], w: number, h: number): void {
@@ -646,21 +719,20 @@ export class WorldScene extends Phaser.Scene {
 
   private getReactiveDialogId(npc: NPC): string {
     const base = npc.dialogId;
-    const bossDefeated = this.quests.getQuestFlag('boss_defeated');
-    const enteredCave = this.quests.getStoryFlag('entered_cave');
-    const enteredForest = this.quests.getStoryFlag('entered_forest');
-    // Check for quest-state specific dialogs (most progressed first)
-    if (bossDefeated) {
-      const heroId = base + '_hero';
-      if ((dialogData as any)[heroId]) return heroId;
-    }
-    if (enteredCave) {
-      const caveId = base + '_cave';
-      if ((dialogData as any)[caveId]) return caveId;
-    }
-    if (enteredForest) {
-      const forestId = base + '_forest';
-      if ((dialogData as any)[forestId]) return forestId;
+    const checks: [boolean, string][] = [
+      [!!this.quests.getQuestFlag('boss_defeated'), '_hero'],
+      [!!this.quests.getStoryFlag('banner_deciphered'), '_banner_deciphered'],
+      [!!this.quests.getStoryFlag('found_banner'), '_found_banner'],
+      [!!this.quests.getStoryFlag('journal_deciphered'), '_journal_deciphered'],
+      [!!this.quests.getStoryFlag('found_journal'), '_found_journal'],
+      [!!this.quests.getStoryFlag('entered_cave'), '_cave'],
+      [!!this.quests.getStoryFlag('entered_forest'), '_forest'],
+    ];
+    for (const [condition, suffix] of checks) {
+      if (condition) {
+        const id = base + suffix;
+        if ((dialogData as any)[id]) return id;
+      }
     }
     return base;
   }
@@ -696,6 +768,11 @@ export class WorldScene extends Phaser.Scene {
     const maps = chapter1Data.maps;
     const idx = maps.findIndex(m => m.id === this.currentMapId);
     if (t === T.STAIRS_DOWN && idx >= 0 && idx < maps.length - 1) {
+      // Boss room gating: need banner_deciphered to enter
+      if (maps[idx + 1].id === 'cave_boss' && !this.quests.getStoryFlag('banner_deciphered')) {
+        this.panel()?.addMessage('A strange barrier blocks the way... The symbols pulse with eerie light.', '#cc88ff');
+        return;
+      }
       this.run.dungeonFloor++;
       this.loadMap(maps[idx + 1].id, -1, -1);
     } else if (t === T.STAIRS_UP && this.currentMapId !== chapter1Data.startMap && idx > 0) {
@@ -705,15 +782,34 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private checkChest(): void {
-    const t = this.currentTiles[this.player.gridY]?.[this.player.gridX];
+    const px = this.player.gridX, py = this.player.gridY;
+    const t = this.currentTiles[py]?.[px];
     if (t !== T.CHEST) return;
-    const items = ['health_potion', 'mana_potion', 'herb'];
-    const item = items[rollInt(0, items.length - 1)];
-    this.inventory.addItem(item);
-    this.currentTiles[this.player.gridY][this.player.gridX] = T.FLOOR;
-    this.tilemap.putTileAt(T.FLOOR, this.player.gridX, this.player.gridY);
+
+    const questKey = `${px},${py}`;
+    const qi = this.questChests.get(questKey);
+    if (qi) {
+      if (qi.itemId) this.inventory.addItem(qi.itemId);
+      this.quests.setStoryFlag(qi.flag);
+      this.questChests.delete(questKey);
+      this.panel()?.addMessage(qi.message, '#ffcc44');
+      this.saveRun();
+    } else {
+      const floor = this.run.dungeonFloor || 0;
+      const LOOT: Record<number, string[]> = {
+        1: ['health_potion', 'herb', 'herb', 'mana_potion', 'leather_armor'],
+        2: ['health_potion', 'mana_potion', 'antidote', 'bomb', 'short_sword'],
+        3: ['health_potion', 'mana_potion', 'bomb', 'bomb', 'chain_mail'],
+      };
+      const pool = LOOT[floor] || ['health_potion', 'mana_potion', 'herb'];
+      const item = pool[rollInt(0, pool.length - 1)];
+      this.inventory.addItem(item);
+      this.panel()?.addMessage(`Found chest! Got ${item.replace(/_/g, ' ')}!`, '#ddaa00');
+    }
+
+    this.currentTiles[py][px] = T.FLOOR;
+    this.tilemap.putTileAt(T.FLOOR, px, py);
     AudioManager.getInstance().playChestOpen();
-    this.panel()?.addMessage(`Found chest! Got ${item.replace(/_/g, ' ')}!`, '#ddaa00');
   }
 
   private checkEncounter(): void {
@@ -839,11 +935,20 @@ export class WorldScene extends Phaser.Scene {
   onBossDefeated(): void {
     this.quests.setQuestFlag('boss_defeated', true);
     this.saveRun();
-    this.character.completedChapters.push(chapter1Data.id);
-    SaveSystem.saveCharacter(this.character);
-    SaveSystem.deleteRun();
-    this.scene.stop('HUDScene');
-    this.scene.start('ChapterCompleteScene', { character: this.character, chapterTitle: chapter1Data.title, outro: chapter1Data.story.outro });
+    this.busy = true;
+    this.time.delayedCall(2000, () => {
+      this.panel()?.addMessage('Beyond the throne, a sealed passage glows with ancient runes...', '#cc88ff');
+      this.time.delayedCall(3000, () => {
+        this.panel()?.addMessage('A shimmering portal appears, pulling you back to the village...', '#aaddff');
+        this.time.delayedCall(2500, () => {
+          this.loadMap('village', 10, 25);
+          this.busy = false;
+          this.time.delayedCall(800, () => {
+            this.panel()?.startDialog('elder_greetings_hero');
+          });
+        });
+      });
+    });
   }
 
   onDialogAction(action: string): void {
@@ -851,10 +956,51 @@ export class WorldScene extends Phaser.Scene {
     const arg = args.join(':');
     if (cmd === 'giveItem') { this.inventory.addItem(arg); this.saveRun(); }
     else if (cmd === 'startQuest') { this.quests.setQuestFlag(arg, false); this.saveRun(); }
-    else if (cmd === 'openShop') { this.panel()?.showShop(); }
+    else if (cmd === 'openShop') { this.panel()?.showShop(arg || undefined); }
+    else if (cmd === 'setFlag') { this.quests.setStoryFlag(arg); this.saveRun(); }
+    else if (cmd === 'setQuestFlag') { this.quests.setQuestFlag(arg, true); this.saveRun(); }
+    else if (cmd === 'addGold') {
+      const amount = parseInt(arg, 10);
+      if (!isNaN(amount)) {
+        this.run.gold = (this.run.gold ?? 0) + amount;
+        this.inventory.gold += amount;
+        this.panel()?.addMessage(`Received ${amount} gold!`, '#ddaa00');
+        this.panel()?.refreshStats();
+        this.saveRun();
+      }
+    }
+    else if (cmd === 'heal') {
+      this.run.hp = this.run.maxHp;
+      this.run.mp = this.run.maxMp;
+      this.panel()?.addMessage('Fully restored!', '#66dd66');
+      this.panel()?.refreshStats();
+      this.saveRun();
+    }
+    else if (cmd === 'removeItem') { this.inventory.removeItem(arg); this.saveRun(); }
+    else if (cmd === 'chapterComplete') {
+      this.character.completedChapters.push(chapter1Data.id);
+      SaveSystem.saveCharacter(this.character);
+      SaveSystem.deleteRun();
+      this.scene.stop('HUDScene');
+      this.scene.start('ChapterCompleteScene', { character: this.character, chapterTitle: chapter1Data.title, outro: chapter1Data.story.outro });
+    }
   }
 
   panel(): any { return this.scene.get('HUDScene'); }
+
+  getDiscoveredWaypoints(): { id: string; name: string; map: string; x: number; y: number }[] {
+    const currentWp = MAP_TO_WAYPOINT[this.currentMapId];
+    return (this.run.waypoints ?? [])
+      .filter(id => id !== currentWp && FAST_TRAVEL[id])
+      .map(id => ({ id, ...FAST_TRAVEL[id] }));
+  }
+
+  fastTravelTo(waypointId: string): void {
+    const wp = FAST_TRAVEL[waypointId];
+    if (!wp) return;
+    this.movePath = [];
+    this.loadMap(wp.map, wp.x, wp.y);
+  }
 
   // ====== Fog of War rendering ======
 

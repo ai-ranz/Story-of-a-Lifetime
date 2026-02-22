@@ -1,0 +1,10 @@
+{
+  "brynn_shop": {
+    "name": "Brynn's General Store",
+    "stock": ["health_potion", "mana_potion", "antidote", "bomb", "herb", "speed_ring", "magic_ring"]
+  },
+  "gareth_forge": {
+    "name": "Gareth's Forge",
+    "stock": ["wooden_sword", "short_sword", "iron_sword", "apprentice_staff", "frost_wand", "shadow_dagger", "leather_armor", "chain_mail", "storm_amulet"]
+  }
+}

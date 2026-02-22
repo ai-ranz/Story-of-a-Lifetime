@@ -26,5 +26,40 @@
     "dialogId": "kael_encouragement",
     "map": "village",
     "position": { "x": 45, "y": 24 }
+  },
+  "innkeeper_martha": {
+    "name": "Martha",
+    "spriteKey": "npc_innkeeper",
+    "dialogId": "martha_inn",
+    "map": "village",
+    "position": { "x": 44, "y": 24 }
+  },
+  "blacksmith_gareth": {
+    "name": "Gareth",
+    "spriteKey": "npc_blacksmith",
+    "dialogId": "gareth_blacksmith",
+    "map": "village",
+    "position": { "x": 20, "y": 23 }
+  },
+  "sister_elara": {
+    "name": "Sister Elara",
+    "spriteKey": "npc_elara",
+    "dialogId": "elara_chapel",
+    "map": "village",
+    "position": { "x": 23, "y": 27 }
+  },
+  "farmer_hob": {
+    "name": "Old Farmer Hob",
+    "spriteKey": "npc_farmer",
+    "dialogId": "hob_farmer",
+    "map": "village",
+    "position": { "x": 52, "y": 29 }
+  },
+  "young_mira": {
+    "name": "Young Mira",
+    "spriteKey": "npc_mira",
+    "dialogId": "mira_kid",
+    "map": "village",
+    "position": { "x": 60, "y": 29 }
   }
 }

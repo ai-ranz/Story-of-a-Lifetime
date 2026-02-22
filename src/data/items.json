@@ -165,5 +165,39 @@
     "spriteKey": "item_key",
     "description": "An old key found near the cave entrance.",
     "value": 0
+  },
+  "tattered_journal": {
+    "name": "Tattered Journal",
+    "type": "key_item",
+    "description": "A worn journal found in the caves. Its faded pages describe organized goblin patrols and mention a powerful leader in the depths.",
+    "value": 0
+  },
+  "goblin_war_banner": {
+    "name": "Goblin War Banner",
+    "type": "key_item",
+    "description": "A ragged banner covered in strange glowing symbols. It pulses with dark energy.",
+    "value": 0
+  },
+  "storm_amulet": {
+    "name": "Storm Amulet",
+    "type": "equipment",
+    "slot": "accessory",
+    "spriteKey": "item_ring",
+    "statModifiers": { "speed": 3 },
+    "teachesSkill": "thunder",
+    "masteryRequired": 5,
+    "description": "Crackles with faint lightning. +3 Speed. Teaches Thunder.",
+    "value": 70
+  },
+  "healers_tome": {
+    "name": "Healer's Tome",
+    "type": "equipment",
+    "slot": "accessory",
+    "spriteKey": "item_ring_magic",
+    "statModifiers": { "magic": 5, "mp": 5 },
+    "teachesSkill": "heal",
+    "masteryRequired": 4,
+    "description": "Ancient healing wisdom. +5 Magic, +5 MP. Teaches Heal.",
+    "value": 80
   }
 }

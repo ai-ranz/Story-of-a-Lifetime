@@ -31,6 +31,7 @@ export interface RunState {
   stepCount: number;
   fogExplored: Record<string, boolean[]>;
   defeatedEnemies: Record<string, number[]>;
+  waypoints: string[];
 }
 
 const SAVE_VERSION = 1;
@@ -118,6 +119,7 @@ export class SaveSystem {
       stepCount: 0,
       fogExplored: {},
       defeatedEnemies: {},
+      waypoints: [],
     };
   }
 }

@@ -1,0 +1,14 @@
+{
+  "the_goblin_menace": {
+    "title": "The Goblin Menace",
+    "objectives": [
+      { "text": "Travel to the Whispering Woods", "flag": "entered_forest", "type": "story" },
+      { "text": "Find the cave and investigate", "flag": "entered_cave", "type": "story" },
+      { "text": "Find clues about the goblin leader", "flag": "found_journal", "type": "story" },
+      { "text": "Return the journal to Elder Thom", "flag": "journal_deciphered", "type": "story" },
+      { "text": "Descend deeper and find evidence", "flag": "found_banner", "type": "story" },
+      { "text": "Show the war banner to Sister Elara", "flag": "banner_deciphered", "type": "story" },
+      { "text": "Defeat the Goblin Chief", "flag": "boss_defeated", "type": "quest" }
+    ]
+  }
+}
