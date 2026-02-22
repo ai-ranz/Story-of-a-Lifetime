@@ -274,6 +274,16 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.busy) return;
       const p = this.panel();
+      // During dialog, clicking an NPC advances the dialog
+      if (p && p.mode === 'dialog') {
+        const wp = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const gx = Math.floor(wp.x / TILE_SIZE);
+        const gy = Math.floor(wp.y / TILE_SIZE);
+        if (this.npcs.some(n => n.gridX === gx && n.gridY === gy)) {
+          p.advanceDialog();
+        }
+        return;
+      }
       if (p && p.mode !== 'idle') return;
       const wp = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const gx = Math.floor(wp.x / TILE_SIZE);

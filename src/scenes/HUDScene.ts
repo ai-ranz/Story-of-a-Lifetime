@@ -611,6 +611,23 @@ export class HUDScene extends Phaser.Scene {
     }
   }
 
+  /** Public entry point: skip typewriter, then advance or pick first choice. */
+  advanceDialog(): void {
+    if (this.mode !== 'dialog') return;
+    // If typewriter still running, finish it first
+    if (this.displayedChars < this.fullDialogText.length) {
+      this.displayedChars = this.fullDialogText.length;
+      if (this.dialogTextObj) this.dialogTextObj.setText(this.fullDialogText);
+      if (this.typewriterTimer) { this.typewriterTimer.destroy(); this.typewriterTimer = undefined; }
+      if (!this.dialogChoicesRendered) { this.dialogChoicesRendered = true; this.renderDialogChoices(); }
+      return;
+    }
+    // Choices visible → pick first; otherwise advance
+    const node = this.dialog.currentNode;
+    if (node?.choices?.length) this.dialogChoose(0);
+    else this.dialogAdvance();
+  }
+
   private dialogAdvance(): void {
     AudioManager.getInstance().playSelect();
     this.addMessage(this.fullDialogText, '#cccccc');
