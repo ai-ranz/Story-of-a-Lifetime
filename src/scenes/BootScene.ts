@@ -98,6 +98,12 @@ export class BootScene extends Phaser.Scene {
       ['enemy_goblin_archer', 0x44cc66],
       ['enemy_shaman', 0x884488],
       ['enemy_goblin_chief', 0x227722],
+      ['enemy_forest_shaman', 0x338844],
+      ['enemy_skeleton_mage', 0xaa99cc],
+      ['enemy_goblin_berserker', 0xcc4422],
+      ['enemy_cave_lurker', 0x444455],
+      ['enemy_bone_archer', 0xbbaa88],
+      ['enemy_goblin_healer', 0x66bb66],
     ];
     for (const [key, color] of chars) {
       this.makeCharSprite(key, color);

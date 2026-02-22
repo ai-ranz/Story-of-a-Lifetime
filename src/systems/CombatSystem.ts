@@ -81,7 +81,7 @@ export class CombatSystem {
   lastResult: CombatResult | null = null;
   private eventCallback: CombatEventCallback = () => {};
   private victoryRewards: { xp: number; gold: number; loot: string[] } = { xp: 0, gold: 0, loot: [] };
-  enemyIntents: Map<string, string> = new Map();
+  enemyIntents: Map<string, { action: CombatAction; description: string }> = new Map();
 
   constructor() {
     this.fsm = new StateMachine();
@@ -165,7 +165,13 @@ export class CombatSystem {
       if (c.isPlayer) {
         this.fsm.transition('PLAYER_CHOOSE');
       } else {
-        this.pendingAction = this.decideEnemyAction(c);
+        this.applyFury(c);
+        const cached = this.enemyIntents.get(c.id);
+        if (cached && this.isActionValid(c, cached.action)) {
+          this.pendingAction = cached.action;
+        } else {
+          this.pendingAction = this.decideEnemyAction(c);
+        }
         this.fsm.transition('EXECUTE_ACTION');
       }
     }
@@ -254,7 +260,13 @@ export class CombatSystem {
     if (c.isPlayer) {
       this.fsm.transition('PLAYER_CHOOSE');
     } else {
-      this.pendingAction = this.decideEnemyAction(c);
+      this.applyFury(c);
+      const cached = this.enemyIntents.get(c.id);
+      if (cached && this.isActionValid(c, cached.action)) {
+        this.pendingAction = cached.action;
+      } else {
+        this.pendingAction = this.decideEnemyAction(c);
+      }
       this.fsm.transition('EXECUTE_ACTION');
     }
   }
@@ -471,7 +483,12 @@ export class CombatSystem {
       const skill = (skillsData as any)[action.skillId!];
       if (skill?.target === 'self') return actor;
       if (skill?.target === 'single_ally') {
-        return this.party[action.targetIndex ?? 0] ?? actor;
+        if (actor.isPlayer) {
+          return this.party[action.targetIndex ?? 0] ?? actor;
+        } else {
+          const aliveAllies = this.enemies.filter(e => e.hp > 0);
+          return aliveAllies[action.targetIndex ?? 0] ?? actor;
+        }
       }
     }
 
@@ -498,46 +515,210 @@ export class CombatSystem {
     this.enemyIntents.clear();
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) continue;
-      this.enemyIntents.set(enemy.id, this.previewEnemyIntent(enemy));
+      const action = this.decideEnemyAction(enemy);
+      const description = this.describeAction(action, enemy);
+      this.enemyIntents.set(enemy.id, { action, description });
     }
   }
 
-  private previewEnemyIntent(enemy: Combatant): string {
-    if (enemy.skills.length > 0 && enemy.mp > 0) {
-      for (const skillId of enemy.skills) {
-        const skill = (skillsData as any)[skillId];
-        if (skill && enemy.mp >= skill.mpCost) {
-          return skill.name;
-        }
+  private describeAction(action: CombatAction, enemy: Combatant): string {
+    const fury = this.wouldFury(enemy);
+    const suffix = fury ? ' (Fury!)' : '';
+    switch (action.type) {
+      case 'attack': return 'Attack' + suffix;
+      case 'defend': return 'Defend';
+      case 'skill': {
+        const sk = (skillsData as any)[action.skillId!];
+        const name = sk?.name ?? action.skillId;
+        if (sk?.target === 'single_ally') return name;
+        return name + suffix;
+      }
+      default: return 'Attack';
+    }
+  }
+
+  private isActionValid(enemy: Combatant, action: CombatAction): boolean {
+    if (action.type === 'skill' && action.skillId) {
+      const skill = (skillsData as any)[action.skillId];
+      if (skill && enemy.mp < skill.mpCost) return false;
+    }
+    return true;
+  }
+
+  private wouldFury(enemy: Combatant): boolean {
+    return (enemy.ai === 'aggressive' || enemy.ai === 'berserker')
+      && enemy.hp < enemy.maxHp * (enemy.ai === 'aggressive' ? 0.2 : 0.3);
+  }
+
+  applyFury(enemy: Combatant): void {
+    if (this.wouldFury(enemy) && !enemy.buffs.some(b => b.stat === 'attack' && b.multiplier >= 1.5)) {
+      enemy.buffs.push({ stat: 'attack', multiplier: 1.5, turnsLeft: 99 });
+    }
+  }
+
+  // ── AI helpers ──
+
+  private getAliveParty(): Combatant[] { return this.party.filter(p => p.hp > 0); }
+  private getAliveEnemies(): Combatant[] { return this.enemies.filter(e => e.hp > 0); }
+
+  private getStrongestSkill(enemy: Combatant): string | null {
+    let best: string | null = null;
+    let bestPower = 0;
+    for (const sid of enemy.skills) {
+      const sk = (skillsData as any)[sid];
+      if (sk && enemy.mp >= sk.mpCost && (sk.power ?? 0) > bestPower
+          && sk.target !== 'single_ally' && sk.target !== 'self') {
+        best = sid;
+        bestPower = sk.power ?? 0;
       }
     }
-    if (enemy.ai === 'defensive' && enemy.hp < enemy.maxHp * 0.3) {
-      return 'Defend';
-    }
-    return 'Attack';
+    return best;
   }
+
+  private getMatchingElementSkill(enemy: Combatant, weakness: Element): string | null {
+    for (const sid of enemy.skills) {
+      const sk = (skillsData as any)[sid];
+      if (sk && enemy.mp >= sk.mpCost && sk.element === weakness) return sid;
+    }
+    return null;
+  }
+
+  private getStatusSkill(enemy: Combatant): string | null {
+    for (const sid of enemy.skills) {
+      const sk = (skillsData as any)[sid];
+      if (sk && enemy.mp >= sk.mpCost && sk.appliesStatus) return sid;
+    }
+    return null;
+  }
+
+  private getHealSkill(enemy: Combatant): string | null {
+    for (const sid of enemy.skills) {
+      const sk = (skillsData as any)[sid];
+      if (sk && enemy.mp >= sk.mpCost && sk.target === 'single_ally') return sid;
+    }
+    return null;
+  }
+
+  // ── Action decision (with randomness) ──
 
   private decideEnemyAction(enemy: Combatant): CombatAction {
-    // Boss or aggressive: use skills when available
-    if (enemy.skills.length > 0 && enemy.mp > 0) {
-      for (const skillId of enemy.skills) {
-        const skill = (skillsData as any)[skillId];
-        if (skill && enemy.mp >= skill.mpCost && rollFloat() < 0.4) {
-          const alive = this.party.filter(p => p.hp > 0);
-          const targetIndex = rollInt(0, alive.length - 1);
-          return { type: 'skill', skillId, targetIndex };
-        }
+    switch (enemy.ai) {
+      case 'aggressive': return this.aiAggressive(enemy);
+      case 'defensive':  return this.aiDefensive(enemy);
+      case 'healer':     return this.aiHealer(enemy);
+      case 'ranged':     return this.aiRanged(enemy);
+      case 'berserker':  return this.aiBerserker(enemy);
+      case 'tactician':  return this.aiTactician(enemy);
+      default:           return this.aiAggressive(enemy);
+    }
+  }
+
+  /** Target lowest HP; use strongest skill 60%; fury at <20% HP */
+  private aiAggressive(enemy: Combatant): CombatAction {
+    const alive = this.getAliveParty();
+    const targetIdx = alive.reduce((bi, p, i) =>
+      p.hp / p.maxHp < alive[bi].hp / alive[bi].maxHp ? i : bi, 0);
+
+    const sk = this.getStrongestSkill(enemy);
+    if (sk && rollFloat() < 0.6) {
+      return { type: 'skill', skillId: sk, targetIndex: targetIdx };
+    }
+    return { type: 'attack', targetIndex: targetIdx };
+  }
+
+  /** Defend at <50% HP; stun threats; attack highest damage dealer */
+  private aiDefensive(enemy: Combatant): CombatAction {
+    const alive = this.getAliveParty();
+    if (enemy.hp < enemy.maxHp * 0.5) return { type: 'defend' };
+
+    const bashSkill = enemy.skills.find(sid => {
+      const s = (skillsData as any)[sid];
+      return s && s.appliesStatus === 'stun' && enemy.mp >= s.mpCost;
+    });
+    const threatIdx = alive.reduce((bi, p, i) =>
+      this.getEffectiveStat(p, 'attack') > this.getEffectiveStat(alive[bi], 'attack') ? i : bi, 0);
+
+    if (bashSkill && rollFloat() < 0.5) {
+      return { type: 'skill', skillId: bashSkill, targetIndex: threatIdx };
+    }
+    return { type: 'attack', targetIndex: threatIdx };
+  }
+
+  /** Heal lowest-HP ally if <60%; self-heal at <30%; else attack */
+  private aiHealer(enemy: Combatant): CombatAction {
+    const healSkill = this.getHealSkill(enemy);
+    if (healSkill) {
+      const aliveEnemies = this.getAliveEnemies();
+      // Self-heal at <30%
+      if (enemy.hp < enemy.maxHp * 0.3) {
+        const selfIdx = aliveEnemies.findIndex(e => e.id === enemy.id);
+        return { type: 'skill', skillId: healSkill, targetIndex: selfIdx >= 0 ? selfIdx : 0 };
+      }
+      // Heal lowest HP ally if below 60%
+      let lowestIdx = -1, lowestRatio = 0.6;
+      for (let i = 0; i < aliveEnemies.length; i++) {
+        const ratio = aliveEnemies[i].hp / aliveEnemies[i].maxHp;
+        if (ratio < lowestRatio) { lowestRatio = ratio; lowestIdx = i; }
+      }
+      if (lowestIdx >= 0) {
+        return { type: 'skill', skillId: healSkill, targetIndex: lowestIdx };
+      }
+    }
+    const alive = this.getAliveParty();
+    return { type: 'attack', targetIndex: rollInt(0, alive.length - 1) };
+  }
+
+  /** Prefer skills (70%); defend at <25% HP */
+  private aiRanged(enemy: Combatant): CombatAction {
+    const alive = this.getAliveParty();
+    if (enemy.hp < enemy.maxHp * 0.25) return { type: 'defend' };
+
+    for (const sid of enemy.skills) {
+      const sk = (skillsData as any)[sid];
+      if (sk && enemy.mp >= sk.mpCost && sk.target !== 'single_ally' && rollFloat() < 0.7) {
+        return { type: 'skill', skillId: sid, targetIndex: rollInt(0, alive.length - 1) };
+      }
+    }
+    return { type: 'attack', targetIndex: rollInt(0, alive.length - 1) };
+  }
+
+  /** Always strongest attack; never defend; fury at <30% HP */
+  private aiBerserker(enemy: Combatant): CombatAction {
+    const alive = this.getAliveParty();
+    const sk = this.getStrongestSkill(enemy);
+    if (sk) return { type: 'skill', skillId: sk, targetIndex: rollInt(0, alive.length - 1) };
+    return { type: 'attack', targetIndex: rollInt(0, alive.length - 1) };
+  }
+
+  /** Exploit weakness; apply status to threats; defend at <40% HP */
+  private aiTactician(enemy: Combatant): CombatAction {
+    const alive = this.getAliveParty();
+    if (enemy.hp < enemy.maxHp * 0.4) return { type: 'defend' };
+
+    // Target weakness with matching element
+    for (let i = 0; i < alive.length; i++) {
+      if (alive[i].weakness) {
+        const sk = this.getMatchingElementSkill(enemy, alive[i].weakness!);
+        if (sk) return { type: 'skill', skillId: sk, targetIndex: i };
       }
     }
 
-    // Defensive AI: heal if low HP (placeholder for future enemy heal skills)
-    if (enemy.ai === 'defensive' && enemy.hp < enemy.maxHp * 0.3) {
-      // For now, just defend
-      return { type: 'defend' };
+    // Apply status to strongest target if not already afflicted
+    const stSk = this.getStatusSkill(enemy);
+    if (stSk) {
+      const threatIdx = alive.reduce((bi, p, i) =>
+        this.getEffectiveStat(p, 'attack') > this.getEffectiveStat(alive[bi], 'attack') ? i : bi, 0);
+      const target = alive[threatIdx];
+      const skill = (skillsData as any)[stSk];
+      if (!target.statusEffects?.some(s => s.id === skill.appliesStatus)) {
+        return { type: 'skill', skillId: stSk, targetIndex: threatIdx };
+      }
     }
 
-    // Default: basic attack on random alive party member
-    const alive = this.party.filter(p => p.hp > 0);
+    const strongSk = this.getStrongestSkill(enemy);
+    if (strongSk && rollFloat() < 0.5) {
+      return { type: 'skill', skillId: strongSk, targetIndex: rollInt(0, alive.length - 1) };
+    }
     return { type: 'attack', targetIndex: rollInt(0, alive.length - 1) };
   }
 }

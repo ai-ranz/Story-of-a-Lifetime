@@ -134,5 +134,86 @@
     "xpReward": 100,
     "goldReward": 60,
     "boss": true
+  },
+  "forest_shaman": {
+    "name": "Forest Shaman",
+    "spriteKey": "enemy_forest_shaman",
+    "stats": { "hp": 18, "mp": 20, "attack": 5, "defense": 3, "speed": 5, "magic": 9 },
+    "skills": ["heal", "poison_bite"],
+    "ai": "healer",
+    "weakness": "fire",
+    "loot": [
+      { "itemId": "herb", "chance": 0.5 },
+      { "itemId": "mana_potion", "chance": 0.2 }
+    ],
+    "xpReward": 16,
+    "goldReward": 8
+  },
+  "skeleton_mage": {
+    "name": "Skeleton Mage",
+    "spriteKey": "enemy_skeleton_mage",
+    "stats": { "hp": 24, "mp": 20, "attack": 5, "defense": 5, "speed": 5, "magic": 12 },
+    "skills": ["fire_bolt", "ice_shard"],
+    "ai": "tactician",
+    "resistance": "dark",
+    "loot": [
+      { "itemId": "mana_potion", "chance": 0.3 },
+      { "itemId": "apprentice_staff", "chance": 0.05 }
+    ],
+    "xpReward": 28,
+    "goldReward": 16
+  },
+  "goblin_berserker": {
+    "name": "Goblin Berserker",
+    "spriteKey": "enemy_goblin_berserker",
+    "stats": { "hp": 35, "mp": 5, "attack": 14, "defense": 4, "speed": 7, "magic": 0 },
+    "skills": ["power_strike"],
+    "ai": "berserker",
+    "loot": [
+      { "itemId": "health_potion", "chance": 0.25 },
+      { "itemId": "iron_sword", "chance": 0.05 }
+    ],
+    "xpReward": 24,
+    "goldReward": 14
+  },
+  "cave_lurker": {
+    "name": "Cave Lurker",
+    "spriteKey": "enemy_cave_lurker",
+    "stats": { "hp": 16, "mp": 5, "attack": 10, "defense": 3, "speed": 10, "magic": 4 },
+    "skills": ["poison_bite"],
+    "ai": "ranged",
+    "weakness": "fire",
+    "loot": [
+      { "itemId": "antidote", "chance": 0.3 }
+    ],
+    "xpReward": 15,
+    "goldReward": 7
+  },
+  "bone_archer": {
+    "name": "Bone Archer",
+    "spriteKey": "enemy_bone_archer",
+    "stats": { "hp": 20, "mp": 8, "attack": 13, "defense": 4, "speed": 8, "magic": 3 },
+    "skills": ["quick_slash"],
+    "ai": "ranged",
+    "weakness": "fire",
+    "resistance": "dark",
+    "loot": [
+      { "itemId": "health_potion", "chance": 0.15 }
+    ],
+    "xpReward": 20,
+    "goldReward": 12
+  },
+  "goblin_healer": {
+    "name": "Goblin Healer",
+    "spriteKey": "enemy_goblin_healer",
+    "stats": { "hp": 20, "mp": 25, "attack": 5, "defense": 4, "speed": 5, "magic": 10 },
+    "skills": ["heal"],
+    "ai": "healer",
+    "loot": [
+      { "itemId": "mana_potion", "chance": 0.4 },
+      { "itemId": "herb", "chance": 0.3 }
+    ],
+    "xpReward": 22,
+    "goldReward": 15
   }
 }

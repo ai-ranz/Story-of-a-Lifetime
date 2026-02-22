@@ -3,7 +3,8 @@
     "encounterRate": 0.15,
     "enemies": [
       { "id": "forest_wolf", "weight": 3 },
-      { "id": "wild_boar", "weight": 2 }
+      { "id": "wild_boar", "weight": 2 },
+      { "id": "forest_shaman", "weight": 1 }
     ],
     "minEnemies": 1,
     "maxEnemies": 2
@@ -13,7 +14,8 @@
     "enemies": [
       { "id": "cave_bat", "weight": 3 },
       { "id": "slime", "weight": 2 },
-      { "id": "goblin", "weight": 3 }
+      { "id": "goblin", "weight": 3 },
+      { "id": "cave_lurker", "weight": 1 }
     ],
     "minEnemies": 1,
     "maxEnemies": 2
@@ -21,10 +23,12 @@
   "cave_floor2": {
     "encounterRate": 0.22,
     "enemies": [
-      { "id": "goblin", "weight": 3 },
+      { "id": "goblin", "weight": 2 },
       { "id": "goblin_archer", "weight": 2 },
-      { "id": "cave_spider", "weight": 3 },
-      { "id": "skeleton", "weight": 2 }
+      { "id": "cave_spider", "weight": 2 },
+      { "id": "skeleton", "weight": 2 },
+      { "id": "bone_archer", "weight": 1 },
+      { "id": "goblin_berserker", "weight": 1 }
     ],
     "minEnemies": 1,
     "maxEnemies": 3
@@ -32,10 +36,12 @@
   "cave_floor3": {
     "encounterRate": 0.25,
     "enemies": [
-      { "id": "skeleton", "weight": 3 },
-      { "id": "goblin_archer", "weight": 3 },
+      { "id": "skeleton", "weight": 2 },
+      { "id": "goblin_archer", "weight": 2 },
       { "id": "goblin_shaman", "weight": 2 },
-      { "id": "cave_spider", "weight": 2 }
+      { "id": "cave_spider", "weight": 1 },
+      { "id": "skeleton_mage", "weight": 2 },
+      { "id": "goblin_healer", "weight": 1 }
     ],
     "minEnemies": 2,
     "maxEnemies": 3

@@ -740,9 +740,9 @@ export class HUDScene extends Phaser.Scene {
       this.actionObjs.push(t);
 
       // Enemy intent indicator
-      const intent = this.combat.enemyIntents.get(e.id);
-      if (intent && e.hp > 0) {
-        const display = this.isBoss ? this.categorizeIntent(intent) : intent;
+      const intentInfo = this.combat.enemyIntents.get(e.id);
+      if (intentInfo && e.hp > 0) {
+        const display = this.isBoss ? this.categorizeIntent(intentInfo.description) : intentInfo.description;
         const it = this.mkText(PAD + 18 + t.width + 8, y + 5, `\u2192 ${display}`, 0xff9966, fontSize - 1);
         this.actionObjs.push(it);
       }
