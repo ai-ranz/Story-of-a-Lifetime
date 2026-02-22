@@ -649,6 +649,9 @@ export class HUDScene extends Phaser.Scene {
     else this.endDialog();
   }
 
+  /** Public: close dialog from outside (e.g. clicking away). */
+  endDialogPublic(): void { if (this.mode === 'dialog') this.endDialog(); }
+
   private endDialog(): void {
     this.dialog.end();
     this.mode = 'idle';
