@@ -304,6 +304,18 @@ export class WorldScene extends Phaser.Scene {
         }
         return;
       }
+
+      // During combat, clicking the world area advances the fight
+      if (p && p.mode === 'combat') {
+        const fsm = p.combat?.fsm?.current;
+        if (fsm === 'ANIMATE' || fsm === 'TURN_START') {
+          p.combat.advanceFromAnimate();
+        } else if (fsm === 'PLAYER_CHOOSE') {
+          p.submitCombatAction({ type: 'attack', targetIndex: 0 });
+        }
+        return;
+      }
+
       if (p && p.mode !== 'idle') return;
       const wp = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const gx = Math.floor(wp.x / TILE_SIZE);

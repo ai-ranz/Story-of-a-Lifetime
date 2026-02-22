@@ -869,7 +869,7 @@ export class HUDScene extends Phaser.Scene {
     }
   }
 
-  private submitCombatAction(action: CombatAction): void {
+  submitCombatAction(action: CombatAction): void {
     this.combatSubmenu = null;
     if (action.type === 'item' && action.itemId) this.worldScene.inventory.removeItem(action.itemId);
     this.combat.submitAction(action);
