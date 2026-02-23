@@ -20,11 +20,18 @@ const BTN_H = 28;      // bottom toolbar height
 const LOG_MAX = 3;      // max visible log messages
 const LOG_LINE_H = 18;  // log line height
 const ACTION_H = 180;   // expanded action area (combat/dialog)
+const PORTRAIT_COL_W = 80;  // portrait column width in action panel
+
+// ── Paper / D&D palette ──
+const PARCH_BG    = 0x3d3020;   // warm dark parchment (panels)
+const PARCH_OVER  = 0x2a1e10;   // dark parchment overlay
+const INK_BORDER  = 0x8b7355;   // warm ink stroke
+const FONT        = "'Palatino Linotype', 'Book Antiqua', Palatino, serif";
 
 const COL = {
-  text: 0xdddddd, dim: 0x999999, hp: 0x44cc44, mp: 0x4488ff,
+  text: 0xede0cc, dim: 0xaa9977, hp: 0x44cc44, mp: 0x4488ff,
   gold: 0xddaa00, dmg: 0xff4444, heal: 0x44dd44, title: 0xffcc44,
-  bar_bg: 0x222222, overlay: 0x000000,
+  bar_bg: 0x3a2a18, overlay: PARCH_OVER,
 };
 
 const BUFF_ICONS: Record<string, { char: string; col: number; label: string }> = {
@@ -66,6 +73,9 @@ export class HUDScene extends Phaser.Scene {
   private quickSlots: (string | null)[] = [null, null, null];
   private invTab: 'equip' | 'items' | 'stats' | 'quest' = 'equip';
   private currentShopId = 'brynn_shop';
+
+  // Portrait (shown inside action panel during dialog/combat)
+  private activePortrait: { key: string; name: string } | null = null;
 
   // Persistent log for review
   private messageLog: { text: string; color: string }[] = [];
@@ -122,8 +132,8 @@ export class HUDScene extends Phaser.Scene {
 
   showLevelUpBanner(level: number): void {
     const banner = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, `LEVEL UP! Lv${level}`, {
-      fontSize: '24px', color: '#ffcc44', fontFamily: 'monospace', fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 4,
+      fontSize: '24px', color: '#ffcc44', fontFamily: FONT, fontStyle: 'bold',
+      stroke: '#2a1a0a', strokeThickness: 4,
     }).setDepth(99).setOrigin(0.5).setAlpha(0);
     this.tweens.add({
       targets: banner, alpha: 1, y: GAME_HEIGHT / 2 - 60, duration: 400, ease: 'Back.easeOut',
@@ -136,9 +146,10 @@ export class HUDScene extends Phaser.Scene {
     });
   }
 
-  startDialog(dialogId: string): void {
+  startDialog(dialogId: string, portraitKey?: string, portraitName?: string): void {
     const tree = (dialogData as any)[dialogId] as DialogTree | undefined;
     if (!tree) { this.addMessage('(No dialog data)', '#ff6666'); return; }
+    this.activePortrait = portraitKey ? { key: 'portrait_' + portraitKey, name: portraitName ?? '' } : null;
     this.dialog.start(tree);
     this.mode = 'dialog';
     this.showDialogNode();
@@ -173,6 +184,10 @@ export class HUDScene extends Phaser.Scene {
     this.mode = 'combat';
     this.combatSubmenu = null;
     this.addMessage(`--- ${foes.map(f => f.name).join(', ')} appeared! ---`, '#ff8844');
+    // Show first enemy portrait in panel
+    if (foes.length > 0 && foes[0].spriteKey) {
+      this.activePortrait = { key: 'portrait_' + foes[0].spriteKey, name: foes[0].name };
+    }
     this.combat.startCombat([player], foes);
   }
 
@@ -190,8 +205,8 @@ export class HUDScene extends Phaser.Scene {
     const panelW = 260, panelH = 40 + waypoints.length * 28 + 36;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, PARCH_BG, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, INK_BORDER).setDepth(31));
 
     const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
     const szBody = this.fs(10);
@@ -244,14 +259,15 @@ export class HUDScene extends Phaser.Scene {
     }
   }
 
-  private renderQuickSlots(y: number, inCombat: boolean): number {
+  private renderQuickSlots(y: number, inCombat: boolean, xOff = 0): number {
     const inv = this.worldScene.inventory;
     this.autoFillQuickSlots();
     const slotW = 80;
     const slotH = 22;
     const gap = 4;
     const totalW = slotW * 3 + gap * 2;
-    let sx = (GAME_WIDTH - totalW) / 2;
+    const availW = GAME_WIDTH - xOff;
+    let sx = xOff + (availW - totalW) / 2;
 
     for (let i = 0; i < 3; i++) {
       const itemId = this.quickSlots[i];
@@ -260,8 +276,8 @@ export class HUDScene extends Phaser.Scene {
       const hasItem = item && qty > 0;
 
       // Slot background
-      const bg = this.add.rectangle(sx + slotW / 2, y + slotH / 2, slotW, slotH, 0x1a1a2e, 0.8)
-        .setStrokeStyle(1, hasItem ? 0x444466 : 0x333344).setDepth(16);
+      const bg = this.add.rectangle(sx + slotW / 2, y + slotH / 2, slotW, slotH, PARCH_BG, 0.8)
+        .setStrokeStyle(1, hasItem ? INK_BORDER : 0x5a4a38).setDepth(16);
       this.actionObjs.push(bg);
 
       if (hasItem) {
@@ -362,14 +378,16 @@ export class HUDScene extends Phaser.Scene {
     const oy = TOP_H + PAD;
 
     const g = this.add.graphics().setDepth(40);
-    // Background
-    g.fillStyle(0x000000, 0.6);
+    // Background (parchment)
+    g.fillStyle(PARCH_OVER, 0.7);
     g.fillRect(ox - 2, oy - 2, mmW + 4, mmH + 4);
+    g.lineStyle(1, INK_BORDER, 0.4);
+    g.strokeRect(ox - 2, oy - 2, mmW + 4, mmH + 4);
 
     const MINI_COLORS: Record<number, number> = {
-      0: 0x4a8c3f, 1: 0xc8a96e, 2: 0x555555, 3: 0x8b7355, 4: 0x3366aa,
-      5: 0x2d6e1e, 6: 0x8b4513, 7: 0xcccc00, 8: 0x00cccc, 9: 0xdd8800,
-      10: 0x886644, 11: 0xaa3333, 12: 0x553311,
+      0: 0x8caa6a, 1: 0xd4c6a0, 2: 0x6b6560, 3: 0xc4aa82, 4: 0x7a99b5,
+      5: 0x5a7a48, 6: 0x8b6540, 7: 0xccbb44, 8: 0x55aaaa, 9: 0xcc9933,
+      10: 0x9a8060, 11: 0x8b4433, 12: 0x5a3a22,
     };
 
     for (let y = 0; y < data.h; y++) {
@@ -444,9 +462,9 @@ export class HUDScene extends Phaser.Scene {
   }
 
   private showBuffTooltip(x: number, y: number, text: string): void {
-    const bg = this.add.rectangle(x, y + 8, 0, 16, COL.overlay, 0.85).setDepth(50).setOrigin(0.5, 0.5);
+    const bg = this.add.rectangle(x, y + 8, 0, 16, PARCH_BG, 0.9).setDepth(50).setOrigin(0.5, 0.5);
     const t = this.add.text(x, y + 8, text, {
-      fontSize: '9px', color: '#dddddd', fontFamily: 'monospace',
+      fontSize: '9px', color: '#ede0cc', fontFamily: FONT,
     }).setDepth(51).setOrigin(0.5, 0.5);
     bg.width = t.width + 8;
     this.tweens.add({
@@ -483,11 +501,11 @@ export class HUDScene extends Phaser.Scene {
 
     const txt = this.add.text(GAME_WIDTH / 2, y, text, {
       fontSize: `${this.fs(10)}px`, color: Phaser.Display.Color.ValueToColor(hexStr(color)).rgba,
-      fontFamily: 'monospace', align: 'center',
+      fontFamily: FONT, align: 'center',
     }).setDepth(20).setOrigin(0.5, 1);
 
     const bgW = txt.width + 8;
-    const bg = this.add.rectangle(GAME_WIDTH / 2, y - txt.height / 2, bgW, txt.height + 2, COL.overlay, 0.6)
+    const bg = this.add.rectangle(GAME_WIDTH / 2, y - txt.height / 2, bgW, txt.height + 2, PARCH_OVER, 0.7)
       .setDepth(19);
 
     const timer = this.time.delayedCall(LOG_FADE_MS, () => this.removeFloat(msg));
@@ -607,17 +625,21 @@ export class HUDScene extends Phaser.Scene {
     const bg = this.add.rectangle(GAME_WIDTH / 2, areaTop + ACTION_H / 2, GAME_WIDTH, ACTION_H, COL.overlay, 0.85).setDepth(15);
     this.actionObjs.push(bg);
 
+    // Portrait left column
+    this.renderPortraitInPanel(areaTop);
+    const contentX = this.activePortrait ? PORTRAIT_COL_W + PAD : PAD;
+
     let y = areaTop + PAD;
-    const speaker = this.mkText(PAD, y, `[${node.speaker}]`, COL.title, this.fs(10));
+    const speaker = this.mkText(contentX, y, `[${node.speaker}]`, COL.title, this.fs(10));
     this.actionObjs.push(speaker);
     y += speaker.height + 4;
 
     this.fullDialogText = node.text;
     this.displayedChars = 0;
     this.dialogChoicesRendered = false;
-    this.dialogTextObj = this.add.text(PAD, y, '', {
-      fontSize: `${this.fs(10)}px`, color: '#dddddd', fontFamily: 'monospace',
-      wordWrap: { width: GAME_WIDTH - PAD * 2, useAdvancedWrap: true },
+    this.dialogTextObj = this.add.text(contentX, y, '', {
+      fontSize: `${this.fs(10)}px`, color: '#ede0cc', fontFamily: FONT,
+      wordWrap: { width: GAME_WIDTH - contentX - PAD, useAdvancedWrap: true },
       maxLines: 4,
     }).setDepth(16);
     this.actionObjs.push(this.dialogTextObj);
@@ -651,6 +673,7 @@ export class HUDScene extends Phaser.Scene {
     this.clickZones.length = 0;
     const node = this.dialog.currentNode;
     if (!node) return;
+    const contentX = this.activePortrait ? PORTRAIT_COL_W + PAD : PAD;
     const textH = this.dialogTextObj ? this.dialogTextObj.height : 14;
     const areaTop = GAME_HEIGHT - ACTION_H;
     const choiceRowH = Math.max(this.fs(10) + 6, 24);
@@ -660,7 +683,7 @@ export class HUDScene extends Phaser.Scene {
       const maxY = GAME_HEIGHT - node.choices.length * choiceRowH - PAD;
       let y = Math.min(rawY, maxY);
       for (let i = 0; i < node.choices.length; i++) {
-        const t = this.mkText(PAD + 4, y, `> ${node.choices[i].text}`, COL.title, this.fs(10));
+        const t = this.mkText(contentX + 4, y, `> ${node.choices[i].text}`, COL.title, this.fs(10));
         this.actionObjs.push(t);
         const idx = i;
         this.addZone(y - 2, choiceRowH, () => this.dialogChoose(idx));
@@ -668,7 +691,7 @@ export class HUDScene extends Phaser.Scene {
       }
     } else {
       const y = Math.min(rawY, GAME_HEIGHT - choiceRowH - PAD);
-      const t = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
+      const t = this.mkText(contentX + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
       this.actionObjs.push(t);
       this.addZone(areaTop, ACTION_H, () => this.dialogAdvance());
     }
@@ -718,6 +741,7 @@ export class HUDScene extends Phaser.Scene {
   private endDialog(): void {
     this.dialog.end();
     this.mode = 'idle';
+    this.activePortrait = null;
     this.clearActions();
     this.renderBottomBar();
   }
@@ -746,6 +770,7 @@ export class HUDScene extends Phaser.Scene {
         audio.playFlee();
         this.addMessage('Escaped from battle!', '#88ccff');
         this.mode = 'idle';
+        this.activePortrait = null;
         this.clearActions();
         this.renderBottomBar();
         break;
@@ -758,10 +783,13 @@ export class HUDScene extends Phaser.Scene {
     const bg = this.add.rectangle(GAME_WIDTH / 2, areaTop + ACTION_H / 2, GAME_WIDTH, ACTION_H, COL.overlay, 0.85).setDepth(15);
     this.actionObjs.push(bg);
 
+    this.renderPortraitInPanel(areaTop);
+    const xOff = this.activePortrait ? PORTRAIT_COL_W : 0;
+
     let y = areaTop + PAD;
-    y = this.renderEnemyStatus(y);
+    y = this.renderEnemyStatus(y, xOff);
     y += 2;
-    y = this.renderQuickSlots(y, true);
+    y = this.renderQuickSlots(y, true, xOff);
     y += 2;
 
     if (this.combatSubmenu === null) {
@@ -775,7 +803,7 @@ export class HUDScene extends Phaser.Scene {
       if (hasItems) actions.push({ label: 'Items \u25B6', cb: () => { this.combatSubmenu = 'items'; this.renderCombatActions(); } });
       actions.push({ label: 'Defend', cb: () => this.submitCombatAction({ type: 'defend' }) });
       if (!this.isBoss) actions.push({ label: 'Flee', cb: () => this.submitCombatAction({ type: 'flee' }) });
-      this.renderCombatButtonGrid(y, actions);
+      this.renderCombatButtonGrid(y, actions, xOff);
     } else if (this.combatSubmenu === 'skills') {
       const p = this.combat.party[0];
       const actions: { label: string; cb: () => void; dim?: boolean }[] = [];
@@ -793,7 +821,7 @@ export class HUDScene extends Phaser.Scene {
         }
       }
       actions.push({ label: '\u25C0 Back', cb: () => { this.combatSubmenu = null; this.renderCombatActions(); } });
-      this.renderCombatButtonGrid(y, actions);
+      this.renderCombatButtonGrid(y, actions, xOff);
     } else {
       const actions: { label: string; cb: () => void; dim?: boolean }[] = [];
       for (const slot of this.worldScene.inventory.items) {
@@ -804,29 +832,29 @@ export class HUDScene extends Phaser.Scene {
         }
       }
       actions.push({ label: '\u25C0 Back', cb: () => { this.combatSubmenu = null; this.renderCombatActions(); } });
-      this.renderCombatButtonGrid(y, actions);
+      this.renderCombatButtonGrid(y, actions, xOff);
     }
   }
 
-  private renderEnemyStatus(y: number): number {
+  private renderEnemyStatus(y: number, xOff = 0): number {
     const fontSize = this.fs(8);
     for (const e of this.combat.enemies) {
       const col = e.hp > 0 ? COL.hp : COL.dim;
       if (e.spriteKey && this.textures.exists(e.spriteKey)) {
-        const icon = this.add.image(PAD + 8, y + 5, e.spriteKey).setDepth(16).setScale(1);
+        const icon = this.add.image(PAD + xOff + 8, y + 5, e.spriteKey).setDepth(16).setScale(1);
         if (e.hp <= 0) icon.setAlpha(0.4);
         this.actionObjs.push(icon);
       }
       const statusStr = (e.statusEffects ?? []).map((s: any) => s.id[0].toUpperCase()).join('');
       const statusSuffix = statusStr ? ` [${statusStr}]` : '';
-      const t = this.mkText(PAD + 18, y + 5, `${e.name} ${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, fontSize);
+      const t = this.mkText(PAD + xOff + 18, y + 5, `${e.name} ${Math.max(0, e.hp)}/${e.maxHp}${statusSuffix}`, col, fontSize);
       this.actionObjs.push(t);
 
       // Enemy intent indicator
       const intentInfo = this.combat.enemyIntents.get(e.id);
       if (intentInfo && e.hp > 0) {
         const display = this.isBoss ? this.categorizeIntent(intentInfo.description) : intentInfo.description;
-        const it = this.mkText(PAD + 18 + t.width + 8, y + 5, `\u2192 ${display}`, 0xff9966, fontSize - 1);
+        const it = this.mkText(PAD + xOff + 18 + t.width + 8, y + 5, `\u2192 ${display}`, 0xff9966, fontSize - 1);
         this.actionObjs.push(it);
       }
 
@@ -848,17 +876,17 @@ export class HUDScene extends Phaser.Scene {
     return intent;
   }
 
-  private renderCombatButtonGrid(y: number, actions: { label: string; cb: () => void; dim?: boolean }[]): void {
-    const colW = (GAME_WIDTH - PAD * 2) / 2;
+  private renderCombatButtonGrid(y: number, actions: { label: string; cb: () => void; dim?: boolean }[], xOff = 0): void {
+    const colW = (GAME_WIDTH - PAD * 2 - xOff) / 2;
     const btnFontSize = this.fs(9);
     const btnRowH = Math.max(btnFontSize + 8, 22);
     let col = 0;
     for (const a of actions) {
-      const ax = PAD + (col * colW) + 4;
+      const ax = PAD + xOff + (col * colW) + 4;
       const t = this.mkText(ax, y + btnRowH / 2, `> ${a.label}`, a.dim ? COL.dim : COL.title, btnFontSize);
       this.actionObjs.push(t);
       if (!a.dim) {
-        const zx = PAD + col * colW + colW / 2;
+        const zx = PAD + xOff + col * colW + colW / 2;
         const z = this.add.zone(zx, y + btnRowH / 2, colW, btnRowH)
           .setDepth(35).setInteractive({ useHandCursor: true });
         z.on('pointerdown', a.cb);
@@ -934,10 +962,13 @@ export class HUDScene extends Phaser.Scene {
     const bg = this.add.rectangle(GAME_WIDTH / 2, areaTop + ACTION_H / 2, GAME_WIDTH, ACTION_H, COL.overlay, 0.85).setDepth(15);
     this.actionObjs.push(bg);
 
+    this.renderPortraitInPanel(areaTop);
+    const xOff = this.activePortrait ? PORTRAIT_COL_W : 0;
+
     let y = areaTop + PAD;
-    y = this.renderEnemyStatus(y);
+    y = this.renderEnemyStatus(y, xOff);
     y += 4;
-    const tc = this.mkText(PAD + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
+    const tc = this.mkText(PAD + xOff + 4, y, '[Tap to continue]', COL.dim, this.fs(10));
     this.actionObjs.push(tc);
     this.addZone(areaTop, ACTION_H, () => this.combat.advanceFromAnimate());
   }
@@ -955,6 +986,7 @@ export class HUDScene extends Phaser.Scene {
       AudioManager.getInstance().playItemPickup();
     }
     this.mode = 'idle';
+    this.activePortrait = null;
     this.clearActions();
     this.autoFillQuickSlots();
     this.renderStats();
@@ -963,6 +995,7 @@ export class HUDScene extends Phaser.Scene {
 
   private onCombatDefeat(): void {
     this.addMessage('--- Defeat... ---', '#ff4444');
+    this.activePortrait = null;
     this.clearActions();
     const areaTop = GAME_HEIGHT - ACTION_H;
     const bg = this.add.rectangle(GAME_WIDTH / 2, areaTop + ACTION_H / 2, GAME_WIDTH, ACTION_H, COL.overlay, 0.85).setDepth(15);
@@ -997,8 +1030,8 @@ export class HUDScene extends Phaser.Scene {
     const panelW = 360, panelH = 380;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, PARCH_BG, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, INK_BORDER).setDepth(31));
 
     const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
     const szBody = this.fs(9);
@@ -1034,7 +1067,7 @@ export class HUDScene extends Phaser.Scene {
 
     // Divider
     const dg = this.add.graphics().setDepth(32);
-    dg.lineStyle(1, 0x444466, 0.5);
+    dg.lineStyle(1, INK_BORDER, 0.5);
     dg.lineBetween(px + PAD, y, px + panelW - PAD, y);
     push(dg); y += 4;
 
@@ -1297,8 +1330,8 @@ export class HUDScene extends Phaser.Scene {
     const panelW = 380, panelH = 380;
     const px = (GAME_WIDTH - panelW) / 2;
     const py = (GAME_HEIGHT - panelH) / 2;
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, 0x1a1a2e, 0.95).setDepth(31));
-    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, 0x444466).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH, PARCH_BG, 0.95).setDepth(31));
+    this.actionObjs.push(this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, panelW, panelH).setStrokeStyle(1, INK_BORDER).setDepth(31));
 
     const push = (o: Phaser.GameObjects.GameObject) => { this.actionObjs.push(o); };
     const szBody = this.fs(9);
@@ -1458,6 +1491,49 @@ export class HUDScene extends Phaser.Scene {
   }
 
   // ══════════════════════════════════════
+  //  PORTRAIT (inside action panel, left column)
+  // ══════════════════════════════════════
+
+  private renderPortraitInPanel(panelTop: number): void {
+    if (!this.activePortrait) return;
+    const PS_DISPLAY = 64;
+    const px = PAD + (PORTRAIT_COL_W - PS_DISPLAY) / 2;
+    const py = panelTop + PAD;
+
+    // Portrait image (48px texture scaled to 64px display)
+    if (this.textures.exists(this.activePortrait.key)) {
+      const img = this.add.image(px + PS_DISPLAY / 2, py + PS_DISPLAY / 2, this.activePortrait.key)
+        .setDisplaySize(PS_DISPLAY, PS_DISPLAY).setDepth(16);
+      this.actionObjs.push(img);
+    }
+
+    // D&D ornate border (double line + corner ornaments)
+    const gfx = this.add.graphics().setDepth(16);
+    gfx.lineStyle(2, INK_BORDER, 0.9);
+    gfx.strokeRect(px, py, PS_DISPLAY, PS_DISPLAY);
+    gfx.lineStyle(0.5, INK_BORDER, 0.4);
+    gfx.strokeRect(px + 2, py + 2, PS_DISPLAY - 4, PS_DISPLAY - 4);
+    gfx.lineStyle(1, INK_BORDER, 0.6);
+    gfx.lineBetween(px, py + 5, px + 5, py);
+    gfx.lineBetween(px + PS_DISPLAY, py + 5, px + PS_DISPLAY - 5, py);
+    gfx.lineBetween(px, py + PS_DISPLAY - 5, px + 5, py + PS_DISPLAY);
+    gfx.lineBetween(px + PS_DISPLAY, py + PS_DISPLAY - 5, px + PS_DISPLAY - 5, py + PS_DISPLAY);
+    this.actionObjs.push(gfx);
+
+    // Name label below portrait
+    const nameText = this.add.text(px + PS_DISPLAY / 2, py + PS_DISPLAY + 3, this.activePortrait.name, {
+      fontSize: `${this.fs(7)}px`,
+      color: Phaser.Display.Color.ValueToColor(COL.title).rgba,
+      fontFamily: FONT,
+      align: 'center',
+    }).setDepth(16).setOrigin(0.5, 0);
+    if (nameText.width > PORTRAIT_COL_W - 4) {
+      nameText.setScale((PORTRAIT_COL_W - 4) / nameText.width);
+    }
+    this.actionObjs.push(nameText);
+  }
+
+  // ══════════════════════════════════════
   //  HELPERS
   // ══════════════════════════════════════
 
@@ -1480,7 +1556,7 @@ export class HUDScene extends Phaser.Scene {
     return this.add.text(x, y, str, {
       fontSize: `${size}px`,
       color: Phaser.Display.Color.ValueToColor(color).rgba,
-      fontFamily: 'monospace',
+      fontFamily: FONT,
     }).setDepth(16).setOrigin(0, 0.5);
   }
 
@@ -1490,8 +1566,8 @@ export class HUDScene extends Phaser.Scene {
     const cx = GAME_WIDTH / 2 + (Math.random() - 0.5) * 60;
     const cy = GAME_HEIGHT - ACTION_H - 20;
     const numText = this.add.text(cx, cy, text, {
-      fontSize: `${size}px`, color, fontFamily: 'monospace', fontStyle: isCrit ? 'bold' : 'normal',
-      stroke: '#000000', strokeThickness: 2,
+      fontSize: `${size}px`, color, fontFamily: FONT, fontStyle: isCrit ? 'bold' : 'normal',
+      stroke: '#2a1a0a', strokeThickness: 2,
     }).setDepth(50).setOrigin(0.5);
     this.tweens.add({
       targets: numText, y: cy - 40, alpha: 0, duration: 900, ease: 'Power2',
@@ -1503,7 +1579,7 @@ export class HUDScene extends Phaser.Scene {
     return this.add.text(x, y, str, {
       fontSize: `${size}px`,
       color: Phaser.Display.Color.ValueToColor(color).rgba,
-      fontFamily: 'monospace',
+      fontFamily: FONT,
       wordWrap: { width: 340, useAdvancedWrap: true },
     }).setDepth(32);
   }

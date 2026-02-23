@@ -17,6 +17,7 @@ import encountersData from '../data/encounters.json';
 import chapter1Data from '../data/chapters/chapter1.json';
 import classesData from '../data/classes.json';
 import enemiesData from '../data/enemies.json';
+import npcsData from '../data/npcs.json';
 import dialogData from '../data/dialogs/village.json';
 
 // Tile indices matching the tileset spritesheet order from BootScene
@@ -726,7 +727,8 @@ export class WorldScene extends Phaser.Scene {
 
   interactWith(npc: NPC): void {
     const dialogId = this.getReactiveDialogId(npc);
-    this.panel()?.startDialog(dialogId);
+    const npcData = (npcsData as any)[npc.npcId];
+    this.panel()?.startDialog(dialogId, npcData?.spriteKey, npcData?.name);
   }
 
   private getReactiveDialogId(npc: NPC): string {
@@ -1029,10 +1031,10 @@ export class WorldScene extends Phaser.Scene {
       for (let x = 0; x < this.mapW; x++) {
         const vis = this.fog.getVisibility(x, y);
         if (vis === Visibility.UNSEEN) {
-          this.fogGfx.fillStyle(0x000000, 1.0);
+          this.fogGfx.fillStyle(0x2a1e10, 1.0);
           this.fogGfx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         } else if (vis === Visibility.EXPLORED) {
-          this.fogGfx.fillStyle(0x000000, 0.55);
+          this.fogGfx.fillStyle(0x2a1e10, 0.50);
           this.fogGfx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
         }
         // VISIBLE tiles have no overlay
@@ -1048,7 +1050,10 @@ export class WorldScene extends Phaser.Scene {
 
   private updateEnemyVisibility(): void {
     for (const enemy of this.mapEnemies) {
-      enemy.setVisible(this.fog.getVisibility(enemy.gridX, enemy.gridY) === Visibility.VISIBLE);
+      const vis = this.fog.getVisibility(enemy.gridX, enemy.gridY);
+      // Alert enemies stay visible even in explored (dimmed) fog so the player
+      // can see them coming — only fully hidden in UNSEEN tiles.
+      enemy.setVisible(vis === Visibility.VISIBLE || (enemy.alert && vis === Visibility.EXPLORED));
     }
   }
 
@@ -1091,8 +1096,9 @@ export class WorldScene extends Phaser.Scene {
     let combatTriggered = false;
     for (const enemy of acting) {
       const dist = Math.abs(enemy.gridX - px) + Math.abs(enemy.gridY - py);
-      // Already adjacent or on player — engage!
+      // Already adjacent or on player — engage only if on a visible tile
       if (dist <= 1) {
+        if (this.fog.getVisibility(enemy.gridX, enemy.gridY) !== Visibility.VISIBLE) continue;
         this.engageEnemy(enemy);
         combatTriggered = true;
         break;
@@ -1104,9 +1110,9 @@ export class WorldScene extends Phaser.Scene {
         occupied.delete(enemy.gridY * 10000 + enemy.gridX);
         enemy.moveTo(step.x, step.y);
         occupied.add(step.y * 10000 + step.x);
-        // After moving, check if now adjacent
+        // After moving, check if now adjacent and visible
         const newDist = Math.abs(step.x - px) + Math.abs(step.y - py);
-        if (newDist <= 1) {
+        if (newDist <= 1 && this.fog.getVisibility(step.x, step.y) === Visibility.VISIBLE) {
           this.engageEnemy(enemy);
           combatTriggered = true;
           break;
