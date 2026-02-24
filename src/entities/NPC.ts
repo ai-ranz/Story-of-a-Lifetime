@@ -21,5 +21,6 @@ export class NPC extends Phaser.GameObjects.Sprite {
     this.npcId = npcId;
     this.dialogId = dialogId;
     scene.add.existing(this);
+    this.setDepth(10);
   }
 }

@@ -28,6 +28,7 @@ export class Enemy extends Phaser.GameObjects.Sprite {
     this.enemyId = enemyId;
     this.spawnIndex = spawnIndex;
     scene.add.existing(this);
+    this.setDepth(10);
   }
 
   /** Tween to a new grid position. Updates gridX/gridY immediately. */

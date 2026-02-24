@@ -184,52 +184,50 @@ export class BootScene extends Phaser.Scene {
     for (const [key, color, sym] of chars) {
       this.makeCharSprite(key, color, sym);
     }
-    // Flush canvas changes to GPU (required for WebGL renderer)
-    for (const [key] of chars) {
-      (this.textures.get(key) as Phaser.Textures.CanvasTexture).update();
-    }
   }
 
-  /** Draw a circular D&D-style token with ink border and initial */
+  /** Draw a circular D&D-style token with ink border and initial.
+   *  Uses textures.createCanvas() for reliable WebGL rendering. */
   private makeCharSprite(key: string, color: number, symbol: string): void {
     const s = TILE_SIZE;
     const cx = s / 2, cy = s / 2, r = s / 2 - 1;
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+    const rgba = (c: number, a: number) =>
+      `rgba(${(c >> 16) & 0xff},${(c >> 8) & 0xff},${c & 0xff},${a})`;
+
+    const canvasTex = this.textures.createCanvas(key, s, s)!;
+    const ctx = canvasTex.getContext();
 
     // Parchment base circle
-    g.fillStyle(PARCHMENT, 0.9);
-    g.fillCircle(cx, cy, r);
+    ctx.fillStyle = rgba(PARCHMENT, 0.9);
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
     // Color fill (slightly smaller)
-    g.fillStyle(color, 0.85);
-    g.fillCircle(cx, cy, r - 1);
+    ctx.fillStyle = rgba(color, 0.85);
+    ctx.beginPath(); ctx.arc(cx, cy, r - 1, 0, Math.PI * 2); ctx.fill();
 
     // Inner highlight (top-left) for dimension
-    const lighter = Phaser.Display.Color.ValueToColor(color).lighten(30).color;
-    g.fillStyle(lighter, 0.4);
-    g.fillCircle(cx - 1, cy - 1, r - 3);
+    const lighter = Phaser.Display.Color.ValueToColor(color).lighten(30);
+    ctx.fillStyle = `rgba(${lighter.red},${lighter.green},${lighter.blue},0.4)`;
+    ctx.beginPath(); ctx.arc(cx - 1, cy - 1, r - 3, 0, Math.PI * 2); ctx.fill();
 
     // Ink border ring (double line for D&D token feel)
-    g.lineStyle(1.5, INK, 0.8);
-    g.strokeCircle(cx, cy, r);
-    g.lineStyle(0.5, INK, 0.3);
-    g.strokeCircle(cx, cy, r - 2);
+    ctx.strokeStyle = rgba(INK, 0.8);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
 
-    g.generateTexture(key, s, s);
-    g.destroy();
+    ctx.strokeStyle = rgba(INK, 0.3);
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI * 2); ctx.stroke();
 
-    // Draw the symbol letter on top
-    const canvas = this.textures.get(key).getSourceImage() as HTMLCanvasElement;
-    if (canvas.getContext) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.font = `bold ${Math.floor(s * 0.55)}px serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#2a1a0a';
-        ctx.fillText(symbol, cx, cy + 1);
-      }
-    }
+    // Symbol letter
+    ctx.font = `bold ${Math.floor(s * 0.55)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#2a1a0a';
+    ctx.fillText(symbol, cx, cy + 1);
+
+    canvasTex.refresh();
   }
 
   /** Generate 48x48 D&D ink-on-parchment portrait textures */

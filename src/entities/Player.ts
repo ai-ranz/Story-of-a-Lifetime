@@ -12,6 +12,7 @@ export class Player extends Phaser.GameObjects.Sprite {
     this.gridX = gridX;
     this.gridY = gridY;
     scene.add.existing(this);
+    this.setDepth(10);
   }
 
   /**

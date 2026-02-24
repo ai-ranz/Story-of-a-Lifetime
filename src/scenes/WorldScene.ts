@@ -563,24 +563,40 @@ export class WorldScene extends Phaser.Scene {
     this.mapEnemies = EntityFactory.createEnemiesForMap(this, mapId, this.run.dungeonSeed, this.dungeonMap, tiles, defeated);
     for (const e of this.mapEnemies) e.setInteractive({ useHandCursor: true });
 
-    // Place quest items in specific dungeon chests
+    // Place quest items in specific dungeon chests.
+    // The DungeonGenerator places chests at the first (1 + floor) mid-rooms.
+    // Quest items must target rooms that actually have CHEST tiles; if the
+    // target room doesn't have one we add it so the player can always find it.
     const midRooms = this.dungeonMap.rooms.slice(1, this.dungeonMap.rooms.length - 1);
     const roomCenter = (r: { x: number; y: number; w: number; h: number }) =>
       `${Math.floor(r.x + r.w / 2)},${Math.floor(r.y + r.h / 2)}`;
+    const ensureChest = (pos: string) => {
+      const [cx, cy] = pos.split(',').map(Number);
+      if (tiles[cy]?.[cx] !== T.CHEST) {
+        tiles[cy][cx] = T.CHEST;
+        this.tilemap.putTileAt(T.CHEST, cx, cy);
+      }
+    };
     if (mapId === 'cave_floor1' && !this.quests.getStoryFlag('found_journal') && midRooms.length > 0) {
-      this.questChests.set(roomCenter(midRooms[0]), {
+      const pos = roomCenter(midRooms[0]);
+      ensureChest(pos);
+      this.questChests.set(pos, {
         itemId: 'tattered_journal', flag: 'found_journal',
         message: 'Found a Tattered Journal! The faded pages describe organized goblin patrols and mention a powerful leader deeper in the caves.',
       });
     }
     if (mapId === 'cave_floor2' && !this.quests.getStoryFlag('read_cave_warning') && midRooms.length > 0) {
-      this.questChests.set(roomCenter(midRooms[midRooms.length - 1]), {
+      const pos = roomCenter(midRooms[midRooms.length - 1]);
+      ensureChest(pos);
+      this.questChests.set(pos, {
         itemId: '', flag: 'read_cave_warning',
         message: 'Scrawled on the wall: "The chief commands from below. His banner holds dark power. Do not face him unprepared..."',
       });
     }
     if (mapId === 'cave_floor3' && !this.quests.getStoryFlag('found_banner') && midRooms.length > 0) {
-      this.questChests.set(roomCenter(midRooms[midRooms.length - 1]), {
+      const pos = roomCenter(midRooms[midRooms.length - 1]);
+      ensureChest(pos);
+      this.questChests.set(pos, {
         itemId: 'goblin_war_banner', flag: 'found_banner',
         message: 'Found a Goblin War Banner! Strange glowing symbols cover the tattered fabric. It pulses with dark energy.',
       });
